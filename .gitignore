@@ -5,6 +5,7 @@
 
 # Node / Next.js
 node_modules/
+.pnpm-store/
 frontend/.next/
 frontend/out/
 frontend/next-env.d.ts
