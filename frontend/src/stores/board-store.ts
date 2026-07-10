@@ -12,27 +12,53 @@ const seedTasks: TasksByColumn = {
       id: "seed-4",
       title: "FastAPI backend skeleton",
       description:
-        "Scaffold the FastAPI app with docker-compose, Postgres + pgvector, and a health endpoint.",
+        "Scaffold the FastAPI app with docker-compose, Postgres + pgvector, and a health endpoint. FastAPI is the single writer to Postgres — Server Actions proxy mutations to it.",
     },
-    { id: "seed-5", title: "LangGraph agent loop" },
+    {
+      id: "seed-5",
+      title: "LangGraph agent loop",
+      description:
+        "Explicit StateGraph with agent → tools loop and one tool (create_task) fully wired: chat → tool call → DB → board update. Checkpointed per board via thread_id.",
+    },
     {
       id: "seed-6",
       title: "HITL approval flow",
       description:
-        "Propose → approve → apply diff flow using interrupt(); the agent never writes to the board directly.",
+        "Propose → approve → apply diff flow using interrupt(); the agent never writes to the board directly. Tools accumulate proposed_changes; only the apply node touches the DB.",
     },
   ],
   in_progress: [
-    { id: "seed-2", title: "Build kanban board UI" },
-    { id: "seed-3", title: "Wire drag and drop" },
+    {
+      id: "seed-2",
+      title: "Build kanban board UI",
+      description:
+        "Three-column board (To Do / In Progress / Done) with shadcn/ui cards, add-task flows, and a task detail dialog with inline editing.",
+    },
+    {
+      id: "seed-3",
+      title: "Wire drag and drop",
+      description:
+        "dnd-kit sortable cards: reorder within a column and move across columns with a drop preview. Array order is the display order.",
+    },
   ],
-  done: [{ id: "seed-1", title: "Scaffold Next.js frontend" }],
+  done: [
+    {
+      id: "seed-1",
+      title: "Scaffold Next.js frontend",
+      description:
+        "Next.js App Router + TypeScript + Tailwind v4 + shadcn/ui, with Zustand for ephemeral board state and dark mode via next-themes.",
+    },
+  ],
 };
 
 interface BoardState {
   tasks: TasksByColumn;
   columnOf: (taskId: string) => ColumnId | undefined;
   addTask: (columnId: ColumnId, title: string, description?: string) => void;
+  updateTask: (
+    taskId: string,
+    updates: Pick<Task, "title" | "description">,
+  ) => void;
   moveTaskToColumn: (
     taskId: string,
     toColumn: ColumnId,
@@ -61,6 +87,20 @@ export const useBoardStore = create<BoardState>((set, get) => ({
         ],
       },
     })),
+
+  updateTask: (taskId, updates) =>
+    set((state) => {
+      const column = get().columnOf(taskId);
+      if (!column) return state;
+      return {
+        tasks: {
+          ...state.tasks,
+          [column]: state.tasks[column].map((t) =>
+            t.id === taskId ? { ...t, ...updates } : t,
+          ),
+        },
+      };
+    }),
 
   moveTaskToColumn: (taskId, toColumn, beforeTaskId) =>
     set((state) => {
