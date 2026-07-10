@@ -15,3 +15,7 @@ export interface Task {
   title: string;
   description?: string;
 }
+
+// Array order within a column is the display order; the backend persists it
+// as a `position` field per task.
+export type TasksByColumn = Record<ColumnId, Task[]>;

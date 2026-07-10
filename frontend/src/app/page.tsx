@@ -1,8 +1,10 @@
 import { Board } from "@/components/board/board";
 import { AddTaskDialog } from "@/components/board/add-task-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { fetchTasksByColumn } from "@/lib/api";
 
-export default function Home() {
+export default async function Home() {
+  const initialTasks = await fetchTasksByColumn();
   return (
     <main className="flex h-dvh flex-col bg-gradient-to-br from-background via-background to-primary/10">
       <header className="flex items-center gap-3 border-b bg-background/80 px-4 py-3 backdrop-blur sm:px-6">
@@ -18,7 +20,7 @@ export default function Home() {
           <ThemeToggle />
         </div>
       </header>
-      <Board />
+      <Board initialTasks={initialTasks} />
     </main>
   );
 }

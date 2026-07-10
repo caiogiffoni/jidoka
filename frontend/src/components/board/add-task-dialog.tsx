@@ -17,10 +17,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { useBoardStore } from "@/stores/board-store";
 import { COLUMNS, type ColumnId } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { createTask } from "@/app/actions";
 
 export function AddTaskDialog() {
   const addTask = useBoardStore((s) => s.addTask);
   const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [columnId, setColumnId] = useState<ColumnId>("todo");
@@ -31,12 +33,24 @@ export function AddTaskDialog() {
     setColumnId("todo");
   }
 
-  function submit() {
+  async function submit() {
     const trimmed = title.trim();
-    if (!trimmed) return;
-    addTask(columnId, trimmed, description.trim() || undefined);
-    reset();
-    setOpen(false);
+    if (!trimmed || pending) return;
+    setPending(true);
+    try {
+      const task = await createTask({
+        columnId,
+        title: trimmed,
+        description: description.trim() || undefined,
+      });
+      addTask(columnId, task);
+      reset();
+      setOpen(false);
+    } catch (error) {
+      console.error("Could not create task:", error);
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -97,8 +111,8 @@ export function AddTaskDialog() {
                 Cancel
               </Button>
             </DialogClose>
-            <Button type="submit" disabled={!title.trim()}>
-              Add task
+            <Button type="submit" disabled={!title.trim() || pending}>
+              {pending ? "Adding…" : "Add task"}
             </Button>
           </DialogFooter>
         </form>

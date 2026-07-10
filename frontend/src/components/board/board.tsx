@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -13,11 +13,26 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { useBoardStore } from "@/stores/board-store";
-import { COLUMNS, isColumnId, type ColumnId, type Task } from "@/lib/types";
+import {
+  COLUMNS,
+  isColumnId,
+  type ColumnId,
+  type Task,
+  type TasksByColumn,
+} from "@/lib/types";
 import { Column } from "./column";
 import { TaskCard } from "./task-card";
 
-export function Board() {
+export function Board({ initialTasks }: { initialTasks: TasksByColumn }) {
+  // Hydrate the store from the server-fetched board exactly once, before the
+  // first subscription read, so SSR and the first client render agree. After
+  // that the store owns board state; mutations update it optimistically.
+  const hydrated = useRef<boolean | null>(null);
+  if (hydrated.current == null) {
+    hydrated.current = true;
+    useBoardStore.setState({ tasks: initialTasks });
+  }
+
   const { tasks, columnOf, moveTaskToColumn, reorderTask } = useBoardStore();
   const [activeTask, setActiveTask] = useState<Task | null>(null);
 
