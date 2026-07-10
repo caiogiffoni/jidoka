@@ -1,4 +1,5 @@
 import { Board } from "@/components/board/board";
+import { AddTaskDialog } from "@/components/board/add-task-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function Home() {
@@ -12,7 +13,8 @@ export default function Home() {
         <p className="hidden text-xs text-muted-foreground sm:block">
           automation with a human touch
         </p>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <AddTaskDialog />
           <ThemeToggle />
         </div>
       </header>

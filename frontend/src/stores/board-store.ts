@@ -8,9 +8,19 @@ type TasksByColumn = Record<ColumnId, Task[]>;
 
 const seedTasks: TasksByColumn = {
   todo: [
-    { id: "seed-4", title: "FastAPI backend skeleton" },
+    {
+      id: "seed-4",
+      title: "FastAPI backend skeleton",
+      description:
+        "Scaffold the FastAPI app with docker-compose, Postgres + pgvector, and a health endpoint.",
+    },
     { id: "seed-5", title: "LangGraph agent loop" },
-    { id: "seed-6", title: "HITL approval flow" },
+    {
+      id: "seed-6",
+      title: "HITL approval flow",
+      description:
+        "Propose → approve → apply diff flow using interrupt(); the agent never writes to the board directly.",
+    },
   ],
   in_progress: [
     { id: "seed-2", title: "Build kanban board UI" },
@@ -22,7 +32,7 @@ const seedTasks: TasksByColumn = {
 interface BoardState {
   tasks: TasksByColumn;
   columnOf: (taskId: string) => ColumnId | undefined;
-  addTask: (columnId: ColumnId, title: string) => void;
+  addTask: (columnId: ColumnId, title: string, description?: string) => void;
   moveTaskToColumn: (
     taskId: string,
     toColumn: ColumnId,
@@ -41,13 +51,13 @@ export const useBoardStore = create<BoardState>((set, get) => ({
     );
   },
 
-  addTask: (columnId, title) =>
+  addTask: (columnId, title, description) =>
     set((state) => ({
       tasks: {
         ...state.tasks,
         [columnId]: [
           ...state.tasks[columnId],
-          { id: crypto.randomUUID(), title },
+          { id: crypto.randomUUID(), title, description },
         ],
       },
     })),
