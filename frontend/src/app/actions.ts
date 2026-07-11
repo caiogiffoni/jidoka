@@ -25,3 +25,25 @@ export async function createTask(input: {
   revalidatePath("/");
   return toTask(created);
 }
+
+export async function moveTask(input: {
+  taskId: string;
+  columnId: ColumnId;
+  position: number;
+}): Promise<void> {
+  const res = await fetch(
+    `${BACKEND_URL}/tasks/${encodeURIComponent(input.taskId)}/move`,
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        column_id: input.columnId,
+        position: input.position,
+      }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`PATCH /tasks/${input.taskId}/move failed: ${res.status}`);
+  }
+  revalidatePath("/");
+}

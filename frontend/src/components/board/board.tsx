@@ -22,6 +22,7 @@ import {
 } from "@/lib/types";
 import { Column } from "./column";
 import { TaskCard } from "./task-card";
+import { moveTask } from "@/app/actions";
 
 export function Board({ initialTasks }: { initialTasks: TasksByColumn }) {
   // Hydrate the store from the server-fetched board exactly once, before the
@@ -35,6 +36,7 @@ export function Board({ initialTasks }: { initialTasks: TasksByColumn }) {
 
   const { tasks, columnOf, moveTaskToColumn, reorderTask } = useBoardStore();
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const dragOrigin = useRef<{ column: ColumnId; index: number } | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -46,6 +48,9 @@ export function Board({ initialTasks }: { initialTasks: TasksByColumn }) {
 
   function handleDragStart({ active }: DragStartEvent) {
     const column = columnOf(String(active.id));
+    dragOrigin.current = column
+      ? { column, index: tasks[column].findIndex((t) => t.id === active.id) }
+      : null;
     setActiveTask(
       column ? (tasks[column].find((t) => t.id === active.id) ?? null) : null,
     );
@@ -67,12 +72,31 @@ export function Board({ initialTasks }: { initialTasks: TasksByColumn }) {
 
   function handleDragEnd({ active, over }: DragEndEvent) {
     setActiveTask(null);
-    if (!over || active.id === over.id) return;
-    const column = columnOf(String(active.id));
-    const overColumn = resolveColumn(over.id);
-    if (column && column === overColumn && !isColumnId(over.id)) {
-      reorderTask(column, String(active.id), String(over.id));
+    const origin = dragOrigin.current;
+    dragOrigin.current = null;
+
+    const taskId = String(active.id);
+    if (over && active.id !== over.id) {
+      const column = columnOf(taskId);
+      const overColumn = resolveColumn(over.id);
+      if (column && column === overColumn && !isColumnId(over.id)) {
+        reorderTask(column, taskId, String(over.id));
+      }
     }
+
+    // Persist the final placement if it changed. The store is already
+    // updated (optimistically), so this is fire-and-forget.
+    if (!origin) return;
+    const state = useBoardStore.getState();
+    const finalColumn = state.columnOf(taskId);
+    if (!finalColumn) return;
+    const finalIndex = state.tasks[finalColumn].findIndex(
+      (t) => t.id === taskId,
+    );
+    if (finalColumn === origin.column && finalIndex === origin.index) return;
+    moveTask({ taskId, columnId: finalColumn, position: finalIndex }).catch(
+      (error) => console.error("Could not persist move:", error),
+    );
   }
 
   return (

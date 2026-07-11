@@ -25,3 +25,8 @@ class TaskCreate(SQLModel):
     title: str
     description: str | None = None
     column_id: ColumnId = "todo"
+
+
+class TaskMove(SQLModel):
+    column_id: ColumnId
+    position: int = Field(ge=0)
