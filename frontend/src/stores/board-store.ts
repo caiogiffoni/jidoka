@@ -19,6 +19,7 @@ interface BoardState {
     beforeTaskId?: string,
   ) => void;
   reorderTask: (columnId: ColumnId, activeId: string, overId: string) => void;
+  placeTask: (taskId: string, columnId: ColumnId, index: number) => void;
 }
 
 export const useBoardStore = create<BoardState>((set, get) => ({
@@ -76,6 +77,29 @@ export const useBoardStore = create<BoardState>((set, get) => ({
             (t) => t.id !== taskId,
           ),
           [toColumn]: target,
+        },
+      };
+    }),
+
+  // Put a task at an exact column + index, e.g. rolling back an optimistic
+  // move the server rejected.
+  placeTask: (taskId, columnId, index) =>
+    set((state) => {
+      const fromColumn = get().columnOf(taskId);
+      if (!fromColumn) return state;
+      const task = state.tasks[fromColumn].find((t) => t.id === taskId);
+      if (!task) return state;
+
+      const without = state.tasks[fromColumn].filter((t) => t.id !== taskId);
+      const target =
+        fromColumn === columnId ? [...without] : [...state.tasks[columnId]];
+      target.splice(Math.min(index, target.length), 0, task);
+
+      return {
+        tasks: {
+          ...state.tasks,
+          [fromColumn]: fromColumn === columnId ? target : without,
+          [columnId]: target,
         },
       };
     }),

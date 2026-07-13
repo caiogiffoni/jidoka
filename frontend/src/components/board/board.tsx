@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
+  KeyboardSensor,
   PointerSensor,
   closestCorners,
   useSensor,
@@ -12,6 +13,8 @@ import {
   type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { toast } from "sonner";
 import { useBoardStore } from "@/stores/board-store";
 import {
   COLUMNS,
@@ -34,16 +37,41 @@ export function Board({ initialTasks }: { initialTasks: TasksByColumn }) {
     useBoardStore.setState({ tasks: initialTasks });
   }
 
-  const { tasks, columnOf, moveTaskToColumn, reorderTask } = useBoardStore();
+  const tasks = useBoardStore((s) => s.tasks);
+  const columnOf = useBoardStore((s) => s.columnOf);
+  const moveTaskToColumn = useBoardStore((s) => s.moveTaskToColumn);
+  const reorderTask = useBoardStore((s) => s.reorderTask);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const dragOrigin = useRef<{ column: ColumnId; index: number } | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    // Space (not Enter) lifts and drops, so Enter can open the task dialog.
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+      keyboardCodes: {
+        start: ["Space"],
+        cancel: ["Escape"],
+        end: ["Space"],
+      },
+    }),
   );
 
   function resolveColumn(id: string | number): ColumnId | undefined {
     return isColumnId(id) ? id : columnOf(String(id));
+  }
+
+  function taskTitle(id: string | number): string {
+    for (const column of COLUMNS) {
+      const task = tasks[column.id].find((t) => t.id === id);
+      if (task) return task.title;
+    }
+    return "task";
+  }
+
+  function columnTitle(id: string | number): string | undefined {
+    const column = resolveColumn(id);
+    return COLUMNS.find((c) => c.id === column)?.title;
   }
 
   function handleDragStart({ active }: DragStartEvent) {
@@ -95,7 +123,13 @@ export function Board({ initialTasks }: { initialTasks: TasksByColumn }) {
     );
     if (finalColumn === origin.column && finalIndex === origin.index) return;
     moveTask({ taskId, columnId: finalColumn, position: finalIndex }).catch(
-      (error) => console.error("Could not persist move:", error),
+      (error) => {
+        console.error("Could not persist move:", error);
+        useBoardStore.getState().placeTask(taskId, origin.column, origin.index);
+        toast.error("Couldn't save that move", {
+          description: "The card was returned to its previous spot. Try again.",
+        });
+      },
     );
   }
 
@@ -107,6 +141,30 @@ export function Board({ initialTasks }: { initialTasks: TasksByColumn }) {
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
       onDragCancel={() => setActiveTask(null)}
+      accessibility={{
+        screenReaderInstructions: {
+          draggable:
+            "To pick up a task, press Space. While dragging, use the arrow keys to move it, press Space again to drop, or press Escape to cancel. Press Enter to open the task.",
+        },
+        announcements: {
+          onDragStart: ({ active }) =>
+            `Picked up "${taskTitle(active.id)}".`,
+          onDragOver: ({ active, over }) => {
+            const column = over && columnTitle(over.id);
+            return column
+              ? `"${taskTitle(active.id)}" is over ${column}.`
+              : undefined;
+          },
+          onDragEnd: ({ active, over }) => {
+            const column = over && columnTitle(over.id);
+            return column
+              ? `"${taskTitle(active.id)}" was dropped in ${column}.`
+              : `"${taskTitle(active.id)}" was dropped.`;
+          },
+          onDragCancel: ({ active }) =>
+            `Dragging "${taskTitle(active.id)}" was cancelled.`,
+        },
+      }}
     >
       <div className="flex flex-1 items-start gap-4 overflow-x-auto p-4 sm:p-6">
         {COLUMNS.map((column) => (

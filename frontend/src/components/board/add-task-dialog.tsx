@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Plus } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -48,6 +49,9 @@ export function AddTaskDialog() {
       setOpen(false);
     } catch (error) {
       console.error("Could not create task:", error);
+      toast.error("Couldn't create task", {
+        description: "Nothing was saved. Check the connection and try again.",
+      });
     } finally {
       setPending(false);
     }
@@ -77,33 +81,64 @@ export function AddTaskDialog() {
             submit();
           }}
         >
-          <Input
-            autoFocus
-            value={title}
-            placeholder="Task title…"
-            onChange={(e) => setTitle(e.target.value)}
-          />
-          <Textarea
-            value={description}
-            placeholder="Description (optional)…"
-            onChange={(e) => setDescription(e.target.value)}
-          />
-          <div className="flex gap-1.5">
-            {COLUMNS.map((column) => (
-              <Button
-                key={column.id}
-                type="button"
-                variant={columnId === column.id ? "secondary" : "ghost"}
-                size="sm"
-                className={cn(
-                  "flex-1",
-                  columnId === column.id && "ring-1 ring-ring/40",
-                )}
-                onClick={() => setColumnId(column.id)}
-              >
-                {column.title}
-              </Button>
-            ))}
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="new-task-title"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              Title
+            </label>
+            <Input
+              id="new-task-title"
+              autoFocus
+              value={title}
+              placeholder="Task title…"
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="new-task-description"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              Description <span className="font-normal">(optional)</span>
+            </label>
+            <Textarea
+              id="new-task-description"
+              value={description}
+              placeholder="Add a description…"
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span
+              id="new-task-column-label"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              Column
+            </span>
+            <div
+              role="group"
+              aria-labelledby="new-task-column-label"
+              className="flex gap-1.5"
+            >
+              {COLUMNS.map((column) => (
+                <Button
+                  key={column.id}
+                  type="button"
+                  variant={columnId === column.id ? "secondary" : "ghost"}
+                  size="sm"
+                  aria-pressed={columnId === column.id}
+                  className={cn(
+                    "flex-1",
+                    columnId === column.id && "ring-1 ring-ring/40",
+                  )}
+                  onClick={() => setColumnId(column.id)}
+                >
+                  {column.title}
+                </Button>
+              ))}
+            </div>
           </div>
           <DialogFooter>
             <DialogClose asChild>

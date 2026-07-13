@@ -6,12 +6,14 @@ import { fetchTasksByColumn } from "@/lib/api";
 export default async function Home() {
   const initialTasks = await fetchTasksByColumn();
   return (
-    <main className="flex h-dvh flex-col bg-gradient-to-br from-background via-background to-primary/10">
-      <header className="flex items-center gap-3 border-b bg-background/80 px-4 py-3 backdrop-blur sm:px-6">
-        <div className="flex size-7 items-center justify-center rounded-md bg-gradient-to-br from-violet-500 to-indigo-600 text-sm font-bold text-white shadow-sm">
-          自
-        </div>
-        <h1 className="text-lg font-bold tracking-tight">Jidoka</h1>
+    <main className="flex h-dvh flex-col bg-background">
+      <header className="flex items-center gap-3 border-b bg-background px-4 py-3 sm:px-6">
+        <h1 className="flex items-center gap-2 text-sm font-semibold tracking-tight">
+          <span aria-hidden className="text-base leading-none">
+            自
+          </span>
+          Jidoka
+        </h1>
         <p className="hidden text-xs text-muted-foreground sm:block">
           automation with a human touch
         </p>
