@@ -62,6 +62,9 @@ interface PomodoroState {
   stop: () => void;
   // Called by the clock when the countdown hits zero.
   finishPhase: () => void;
+  // Called once after rehydration: walks the timer through any phases that
+  // expired while the page was closed or hidden.
+  catchUp: () => void;
   acknowledgeAlarm: () => void;
   setTask: (taskId: string | null) => void;
   updateSettings: (patch: Partial<PomodoroSettings>) => void;
@@ -80,8 +83,48 @@ export function phaseDurationMs(
   return minutes * 60_000;
 }
 
+function dayKeyOf(date: Date): string {
+  return date.toLocaleDateString("en-CA"); // local YYYY-MM-DD
+}
+
 function todayKey(): string {
-  return new Date().toLocaleDateString("en-CA"); // local YYYY-MM-DD
+  return dayKeyOf(new Date());
+}
+
+// The transition applied when a running phase's countdown reaches its end
+// with the page open - the only way a phase completes; expiring while the
+// page is closed never counts (see catchUp). `endedAt` is the phase's real
+// end, so follow-up phases are scheduled from it, not from Date.now().
+// (When work-block persistence lands, the POST for a finished focus block
+// goes here: start = endedAt - duration, end = endedAt.)
+function advance(
+  state: Pick<
+    PomodoroState,
+    "settings" | "phase" | "cycle" | "doneToday" | "dayKey"
+  >,
+  endedAt: number,
+): Partial<PomodoroState> {
+  const { settings } = state;
+  if (state.phase === "focus") {
+    const day = dayKeyOf(new Date(endedAt));
+    const cycle = state.cycle + 1;
+    const next: PomodoroPhase =
+      cycle % settings.longBreakEvery === 0 ? "long_break" : "break";
+    return {
+      cycle,
+      dayKey: day,
+      doneToday: (state.dayKey === day ? state.doneToday : 0) + 1,
+      phase: next,
+      status: settings.autoStartBreak ? "running" : "idle",
+      endsAt: settings.autoStartBreak
+        ? endedAt + phaseDurationMs(next, settings)
+        : null,
+      remainingMs: null,
+    };
+  }
+  // A break ended: line up the next focus block, but let the human start
+  // it - they may be away from the keyboard, so work never begins on its own.
+  return { phase: "focus", status: "idle", endsAt: null, remainingMs: null };
 }
 
 export const usePomodoroStore = create<PomodoroState>()(
@@ -146,41 +189,30 @@ export const usePomodoroStore = create<PomodoroState>()(
         const state = get();
         if (state.status !== "running" || state.endsAt == null) return;
         if (state.endsAt > Date.now()) return;
-        const { settings } = state;
-        const alarm: PomodoroAlarm = {
-          endedPhase: state.phase,
-          startedAt: Date.now(),
-        };
+        set({
+          ...advance(state, state.endsAt),
+          alarm: { endedPhase: state.phase, startedAt: Date.now() },
+        });
+      },
 
-        if (state.phase === "focus") {
-          const day = todayKey();
-          const cycle = state.cycle + 1;
-          const next: PomodoroPhase =
-            cycle % settings.longBreakEvery === 0 ? "long_break" : "break";
-          set({
-            cycle,
-            dayKey: day,
-            doneToday: (state.dayKey === day ? state.doneToday : 0) + 1,
-            phase: next,
-            status: settings.autoStartBreak ? "running" : "idle",
-            endsAt: settings.autoStartBreak
-              ? Date.now() + phaseDurationMs(next, settings)
-              : null,
-            remainingMs: null,
-            alarm,
-          });
+      catchUp: () => {
+        const state = get();
+        if (
+          state.status !== "running" ||
+          state.endsAt == null ||
+          state.endsAt > Date.now()
+        ) {
           return;
         }
-
-        // A break ended: line up the next focus block, but let the human
-        // start it - you may be away from the keyboard, so work never
-        // begins on its own.
+        // The phase expired while the page was closed. The user may not
+        // have been working, so the block is discarded like a stopped
+        // session: no stats, no daily goal, no alarm - and later, no POST.
         set({
-          phase: "focus",
           status: "idle",
+          phase: "focus",
           endsAt: null,
           remainingMs: null,
-          alarm,
+          alarm: null,
         });
       },
 
@@ -195,13 +227,23 @@ export const usePomodoroStore = create<PomodoroState>()(
     }),
     {
       name: "jidoka-pomodoro",
+      // endsAt is absolute, so a persisted running timer stays correct
+      // across reloads; catchUp() settles anything that expired meanwhile.
       partialize: (state) => ({
         settings: state.settings,
         cycle: state.cycle,
         doneToday: state.doneToday,
         dayKey: state.dayKey,
         taskId: state.taskId,
+        status: state.status,
+        phase: state.phase,
+        endsAt: state.endsAt,
+        remainingMs: state.remainingMs,
       }),
+      // Hydrate explicitly on mount (see PomodoroMenu): the header button
+      // renders persisted state, so hydrating during SSR-render would
+      // mismatch the server HTML.
+      skipHydration: true,
     },
   ),
 );

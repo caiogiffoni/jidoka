@@ -43,11 +43,23 @@ export function PomodoroMenu() {
   const acknowledgeAlarm = usePomodoroStore((s) => s.acknowledgeAlarm);
   const tasks = useBoardStore((s) => s.tasks);
 
+  // `now` drives the countdown display; it is only written in event
+  // handlers and async callbacks - render stays pure.
+  const [now, setNow] = useState(0);
+
+  // Persisted state is loaded after mount (skipHydration) so the first
+  // client render matches the server HTML; catchUp() then settles any
+  // phases that expired while the page was closed.
+  useEffect(() => {
+    void Promise.resolve(usePomodoroStore.persist.rehydrate()).then(() => {
+      usePomodoroStore.getState().catchUp();
+      setNow(Date.now());
+    });
+  }, []);
+
   // The clock: ticks while running and fires the phase change at zero. It
   // lives here (always mounted in the header) so the timer survives the
-  // popover closing. `now` is only written in event handlers and the
-  // interval callback - render stays pure.
-  const [now, setNow] = useState(0);
+  // popover closing.
   useEffect(() => {
     if (status !== "running") return;
     const id = setInterval(() => {
@@ -98,7 +110,7 @@ export function PomodoroMenu() {
   const duration = phaseDurationMs(phase, settings);
   const remaining =
     status === "running" && endsAt != null
-      ? Math.max(0, endsAt - now)
+      ? Math.min(duration, Math.max(0, endsAt - now))
       : status === "paused" && remainingMs != null
         ? remainingMs
         : duration;
