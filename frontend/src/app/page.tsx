@@ -1,5 +1,6 @@
 import { Board } from "@/components/board/board";
 import { AddTaskDialog } from "@/components/board/add-task-dialog";
+import { PomodoroMenu } from "@/components/pomodoro/pomodoro-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { fetchTasksByColumn } from "@/lib/api";
 
@@ -19,6 +20,7 @@ export default async function Home() {
         </p>
         <div className="ml-auto flex items-center gap-2">
           <AddTaskDialog />
+          <PomodoroMenu />
           <ThemeToggle />
         </div>
       </header>
