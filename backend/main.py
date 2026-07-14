@@ -83,3 +83,17 @@ def move_task(
     session.commit()
     session.refresh(task)
     return task
+
+
+@app.delete("/tasks/{task_id}", status_code=204)
+def delete_task(task_id: uuid.UUID, session: Session = Depends(get_session)):
+    task = session.get(Task, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="task not found")
+
+    remaining = [t for t in column_tasks(session, task.column_id) if t.id != task.id]
+    session.delete(task)
+    for index, t in enumerate(remaining):
+        t.position = index
+    session.add_all(remaining)
+    session.commit()
