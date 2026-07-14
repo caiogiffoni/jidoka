@@ -28,7 +28,11 @@ The agent is an explicit LangGraph state machine because the feature's control f
 
 ## Status
 
-The base kanban is built and usable by hand: create, edit, and delete cards (confirm dialog + undo toast), drag them across columns with pointer or keyboard (with screen-reader announcements). Mutations are optimistic with rollback and error toasts; the frontend persists through Server Actions to FastAPI, the single writer to Postgres. The agent, HITL approval flow, semantic search, time tracking, and evals are next, in that order.
+The base kanban is built and usable by hand: create, edit, and delete cards (confirm dialog + undo toast), drag them across columns with pointer or keyboard (with screen-reader announcements). Mutations are optimistic with rollback and error toasts; the frontend persists through Server Actions to FastAPI, the single writer to Postgres.
+
+A pomodoro timer lives in the header: the classic work / break / long-break cycle, with each focus block linkable to a board task, a repeating alarm that stops when acknowledged, and a daily goal. Work never auto-starts - breaks can. It's client-side for now; persisting work blocks to the backend is the next step of time tracking.
+
+The agent, HITL approval flow, and semantic search are next, in that order.
 
 ## Running locally
 
