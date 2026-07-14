@@ -37,7 +37,7 @@ Confident energy: fast, alive, a little showy. The interface should feel like a 
 2. **The board is the show.** Agent activity expresses itself as the board moving - cards appearing, sliding, updating live - not as chat transcript theater.
 3. **Real tool first.** Every surface must survive daily use: honest empty states, loading skeletons, error recovery. Demo shine is earned by real states, not staged ones.
 4. **Speed is the personality.** Optimistic updates, tactile drag, instant feedback, streaming everywhere. Confident energy comes from responsiveness, not decoration.
-5. **Legible in ten minutes.** An interviewer should grasp the HITL architecture from the UI alone - proposals, diffs, and applied changes each look distinct at a glance.
+5. **Legible in ten minutes.** A first-time demo visitor should grasp the HITL architecture from the UI alone - proposals, diffs, and applied changes each look distinct at a glance.
 
 ## Accessibility & Inclusion
 
