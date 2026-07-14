@@ -47,3 +47,14 @@ export async function moveTask(input: {
   }
   revalidatePath("/");
 }
+
+export async function deleteTask(taskId: string): Promise<void> {
+  const res = await fetch(
+    `${BACKEND_URL}/tasks/${encodeURIComponent(taskId)}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) {
+    throw new Error(`DELETE /tasks/${taskId} failed: ${res.status}`);
+  }
+  revalidatePath("/");
+}

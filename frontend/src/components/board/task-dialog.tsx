@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useBoardStore } from "@/stores/board-store";
 import { COLUMNS, type Task } from "@/lib/types";
+import { ConfirmDeleteDialog } from "./delete-task";
 
 export function TaskDialog({
   task,
@@ -28,6 +29,7 @@ export function TaskDialog({
   const updateTask = useBoardStore((s) => s.updateTask);
   const columnOf = useBoardStore((s) => s.columnOf);
   const [editing, setEditing] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
 
@@ -114,7 +116,7 @@ export function TaskDialog({
         ) : (
           <>
             <DialogHeader>
-              <DialogTitle className="pr-16 leading-snug">
+              <DialogTitle className="pr-24 leading-snug">
                 {task.title}
               </DialogTitle>
             </DialogHeader>
@@ -151,9 +153,24 @@ export function TaskDialog({
               <Pencil />
               <span className="sr-only">Edit task</span>
             </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="absolute top-2 right-18 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => setConfirmingDelete(true)}
+            >
+              <Trash2 />
+              <span className="sr-only">Delete task</span>
+            </Button>
           </>
         )}
       </DialogContent>
+      <ConfirmDeleteDialog
+        task={task}
+        open={confirmingDelete}
+        onOpenChange={setConfirmingDelete}
+        onConfirm={() => onOpenChange(false)}
+      />
     </Dialog>
   );
 }

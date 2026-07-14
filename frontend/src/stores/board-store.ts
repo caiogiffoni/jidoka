@@ -20,6 +20,10 @@ interface BoardState {
   ) => void;
   reorderTask: (columnId: ColumnId, activeId: string, overId: string) => void;
   placeTask: (taskId: string, columnId: ColumnId, index: number) => void;
+  removeTask: (taskId: string) => void;
+  // Re-insert a removed task at an exact column + index, e.g. rolling back
+  // an optimistic delete the server rejected.
+  restoreTask: (task: Task, columnId: ColumnId, index: number) => void;
 }
 
 export const useBoardStore = create<BoardState>((set, get) => ({
@@ -102,6 +106,25 @@ export const useBoardStore = create<BoardState>((set, get) => ({
           [columnId]: target,
         },
       };
+    }),
+
+  removeTask: (taskId) =>
+    set((state) => {
+      const column = get().columnOf(taskId);
+      if (!column) return state;
+      return {
+        tasks: {
+          ...state.tasks,
+          [column]: state.tasks[column].filter((t) => t.id !== taskId),
+        },
+      };
+    }),
+
+  restoreTask: (task, columnId, index) =>
+    set((state) => {
+      const column = [...state.tasks[columnId]];
+      column.splice(Math.min(index, column.length), 0, task);
+      return { tasks: { ...state.tasks, [columnId]: column } };
     }),
 
   reorderTask: (columnId, activeId, overId) =>
