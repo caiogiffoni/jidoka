@@ -10,11 +10,31 @@ Source material lives in `temp/`: `PROJETO 18.pdf` is the original 2023 spec (Tr
 
 ## Repo status
 
-Greenfield monorepo: `frontend/` (Next.js) and `backend/` (FastAPI) are empty scaffolding targets. Planned infra: docker-compose with Postgres + pgvector (Supabase acceptable).
+Monorepo with the base kanban (feature 0) built and working:
 
-**Build order (deliberate):** scaffold monorepo + docker-compose and get deploy/infra working end-to-end _first_; then implement the agent graph with one tool (`create_task`) fully wired (chat → tool call → DB → board update); UI polish last.
+- `backend/` - FastAPI + SQLModel. Endpoints: `GET /health`, `GET /tasks`, `POST /tasks`, `PATCH /tasks/{id}/move`, `DELETE /tasks/{id}`, `POST`/`GET /tasks/{id}/work-blocks`. Move and delete reindex the affected column(s) so positions stay dense; deleting a task cascade-deletes its work blocks.
+- `frontend/` - Next.js board: dnd-kit drag across columns (pointer + keyboard with SR announcements), create dialog, task detail/edit dialog, delete with confirm dialog + undo toast. Mutations are optimistic in Zustand with rollback + error toast on server failure; persistence goes through Server Actions (`src/app/actions.ts`) → FastAPI.
+- Pomodoro timer - tomato button in the header opens a popover: countdown, task select (links the block to a board task), start/pause/resume/stop, gear → settings dialog. State in `stores/pomodoro-store.ts` (settings/counts persisted to localStorage as `jidoka-pomodoro`); alarm sounds synthesized in `lib/alarm.ts` (no audio assets). Focus blocks linked to a task persist to the backend as `work_blocks` rows via `POST /tasks/{id}/work-blocks`. See "Pomodoro behavior" below.
+- `compose.yaml` - pgvector (pg17) + backend with `docker compose watch` sync. The frontend is **not** containerized; run it with pnpm.
 
-_(Update this file with real build/test/lint commands as scaffolding lands.)_
+**Known gaps:** task title/description edits in the task dialog only update the Zustand store - there is no `PATCH /tasks/{id}` endpoint yet, so edits don't persist. Delete is deferred: the server `DELETE` fires only when the undo toast closes, so closing the tab during the toast drops the delete (deliberate - favors keeping data).
+
+**Build order (deliberate):** infra + base kanban first (done); next, the agent graph with one tool (`create_task`) fully wired (chat → tool call → DB → board update); UI polish last.
+
+### Commands
+
+```bash
+docker compose up --watch        # Postgres (pgvector) :5432 + backend :8000
+cd backend && uv run fastapi dev main.py   # backend alone (DATABASE_URL defaults to localhost:5432)
+cd frontend && pnpm dev          # Next.js :3000 (expects backend on :8000, BACKEND_URL to override)
+cd frontend && pnpm lint         # eslint
+cd frontend && npx tsc --noEmit  # typecheck
+cd frontend && pnpm build        # production build
+```
+
+No test suites yet (the pytest eval suite arrives with the agent).
+
+`HISTORY.md` at the repo root is a running session log (newest first). At the end of a working session, append a dated entry: what landed, decisions made, what's next.
 
 ## Stack (settled - do not relitigate)
 
@@ -62,8 +82,23 @@ g.add_edge("tools", "agent")         # the agent loop
 
 Time permitting: standup digest (background job), quiz-me study mode, MCP server exposing the board. Everything else (vision, voice, duplicate detection, cost dashboard, card image uploads from the original PDF) goes in the README roadmap section only - do not implement.
 
+### Pomodoro behavior (settled)
+
+The timer follows the classic pomodoro cycle:
+
+1. **Work** (default 25 min) - press Start to begin. Completing a work session counts as one pomodoro.
+2. **Break** (default 5 min) - follows each work session. Every 4th pomodoro (configurable, "long break every") earns a **long break** (default 15 min) instead.
+3. Back to idle - when a break ends, the next work session is **never** auto-started; the user may be away from the keyboard, so work always requires a manual Start.
+
+Breaks can start automatically after work ends (auto-start break, on by default) or wait to be started. The alarm repeats every "repeat alarm every" seconds until acknowledged - any timer interaction, including opening the popover, counts - and an unacknowledged alarm gives up on its own after "stop alarm after" (default 3 min; the spec scoped this to break alarms, but it is applied to all alarms so nothing can ring forever).
+
+**Pause/Resume** freezes the current phase and picks it back up. **Stop** aborts the phase and returns to idle - a stopped work session never counts toward stats, streaks, or the daily goal, and is **not** persisted: only a focus block that actually finishes is worth keeping as history. A finished focus block linked to a task is saved as a `work_blocks` row; blocks with no task selected have nowhere to attach and stay client-side. A failed save shows an error toast but never disturbs the timer.
+
+The full timer state (status, phase, absolute `endsAt`) persists to localStorage, so a running countdown survives reloads: `endsAt` is an absolute timestamp, so after a refresh the remaining time is still exact. **A block only counts if it finishes with the page open** - if the countdown expired while the page was closed, `catchUp()` (run on load) discards it entirely: no stats, no daily goal, no alarm, no POST - the user may not have been working after closing the tab. Rehydration is explicit on mount (`skipHydration`) to avoid SSR hydration mismatches in the header button. The work-block POST (`persistFocusBlock` in `pomodoro-store.ts`, fire-and-forget through the `recordWorkBlock` Server Action) fires only from `finishPhase()`, on a live focus-block finish. Known limit: two open tabs both run the clock and would double-count.
+
 ## Gotchas / hard rules
 
+- **Avoid Claude in Chrome browser automation - it burns a lot of tokens.** Verify changes with `curl` against FastAPI (`:8000`) and `docker exec jidoka-db-1 psql -U jidoka -d jidoka` for data checks instead. Only reach for the browser when the user asks or a change genuinely can't be confirmed any other way, and keep the session minimal.
 - The extraction prompt must only extract tasks actually present in the pasted text - no inventing tasks.
 - Double-pasting the same brief creates duplicate cards; dedupe via embeddings is a later roadmap item, not a blocker.
 - Every `tool_use` block must be answered by a matching `tool_result`, or the LLM API returns a 400.
