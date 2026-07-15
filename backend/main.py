@@ -6,7 +6,7 @@ from sqlalchemy import func
 from sqlmodel import Session, select
 
 from db import create_db_and_tables, get_session
-from models import Task, TaskCreate, TaskMove
+from models import Task, TaskCreate, TaskMove, WorkBlock, WorkBlockCreate
 
 
 @asynccontextmanager
@@ -83,6 +83,34 @@ def move_task(
     session.commit()
     session.refresh(task)
     return task
+
+
+@app.post(
+    "/tasks/{task_id}/work-blocks", response_model=WorkBlock, status_code=201
+)
+def create_work_block(
+    task_id: uuid.UUID,
+    payload: WorkBlockCreate,
+    session: Session = Depends(get_session),
+):
+    if session.get(Task, task_id) is None:
+        raise HTTPException(status_code=404, detail="task not found")
+    block = WorkBlock(task_id=task_id, **payload.model_dump())
+    session.add(block)
+    session.commit()
+    session.refresh(block)
+    return block
+
+
+@app.get("/tasks/{task_id}/work-blocks", response_model=list[WorkBlock])
+def list_work_blocks(task_id: uuid.UUID, session: Session = Depends(get_session)):
+    if session.get(Task, task_id) is None:
+        raise HTTPException(status_code=404, detail="task not found")
+    return session.exec(
+        select(WorkBlock)
+        .where(WorkBlock.task_id == task_id)
+        .order_by(WorkBlock.started_at, WorkBlock.created_at)
+    ).all()
 
 
 @app.delete("/tasks/{task_id}", status_code=204)

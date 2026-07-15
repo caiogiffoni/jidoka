@@ -26,11 +26,46 @@ The name comes from the Toyota principle _jidoka_: automation with a human touch
 
 The agent is an explicit LangGraph state machine because the feature's control flow _is_ the graph: an agent ↔ tools loop, an interrupt for approval, and checkpointed state resumable per board.
 
+## Data model
+
+Current (SQLModel, in `backend/models.py`):
+
+**`Task`** - one card on the board.
+
+| Field         | Type        | Notes                                             |
+| ------------- | ----------- | ------------------------------------------------- |
+| `id`          | UUID        | primary key                                       |
+| `title`       | str         |                                                   |
+| `description` | str \| None |                                                   |
+| `column_id`   | str         | `todo` \| `in_progress` \| `done`, indexed        |
+| `position`    | int         | display order within the column, kept dense       |
+| `created_at`  | datetime    | UTC                                               |
+
+**`WorkBlock`** - one completed pomodoro or manually logged stretch of work on a task. Blocks are append-only rows, not a mutating counter, so history is kept. Timer blocks carry timestamps; manual entries carry only minutes (one of the two is required). Stopped (aborted) focus sessions are never persisted - only a block that finishes is worth keeping.
+
+| Field        | Type             | Notes                                     |
+| ------------ | ---------------- | ------------------------------------------ |
+| `id`         | UUID             | primary key                               |
+| `task_id`    | UUID             | FK → `tasks.id`, cascade delete, indexed  |
+| `started_at` | datetime \| None | UTC; set for timer blocks                 |
+| `ended_at`   | datetime \| None | UTC; set for timer blocks                 |
+| `minutes`    | int \| None      | for manual entry without timestamps       |
+| `created_at` | datetime         | UTC                                       |
+
+Planned:
+
+**`Project`** - first-class grouping; each task optionally links to one project (`tasks.project_id`, nullable FK). Time rolls up work block → task → project for a per-project "time invested" view.
+
+| Field  | Type | Notes       |
+| ------ | ---- | ----------- |
+| `id`   | UUID | primary key |
+| `name` | str  |             |
+
 ## Status
 
 The base kanban is built and usable by hand: create, edit, and delete cards (confirm dialog + undo toast), drag them across columns with pointer or keyboard (with screen-reader announcements). Mutations are optimistic with rollback and error toasts; the frontend persists through Server Actions to FastAPI, the single writer to Postgres.
 
-A pomodoro timer lives in the header: the classic work / break / long-break cycle, with each focus block linkable to a board task, a repeating alarm that stops when acknowledged, and a daily goal. Work never auto-starts - breaks can. It's client-side for now; persisting work blocks to the backend is the next step of time tracking.
+A pomodoro timer lives in the header: the classic work / break / long-break cycle, with each focus block linkable to a board task, a repeating alarm that stops when acknowledged, and a daily goal. Work never auto-starts - breaks can. A running countdown survives page reloads, but a block only counts if it finishes while the page is open. A finished focus block linked to a task is persisted as a work-block row; stopped (aborted) sessions are never sent to the backend. Manual minutes entry and the per-project rollup are the next steps of time tracking.
 
 The agent, HITL approval flow, and semantic search are next, in that order.
 

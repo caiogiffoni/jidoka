@@ -48,6 +48,32 @@ export async function moveTask(input: {
   revalidatePath("/");
 }
 
+// Persist a completed pomodoro work block. No revalidatePath: the board
+// doesn't render time data yet, so there is nothing to refresh. Stopped
+// (aborted) focus sessions are never sent here - only finished ones count.
+export async function recordWorkBlock(input: {
+  taskId: string;
+  startedAt: number; // epoch ms
+  endedAt: number; // epoch ms
+}): Promise<void> {
+  const res = await fetch(
+    `${BACKEND_URL}/tasks/${encodeURIComponent(input.taskId)}/work-blocks`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        started_at: new Date(input.startedAt).toISOString(),
+        ended_at: new Date(input.endedAt).toISOString(),
+      }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(
+      `POST /tasks/${input.taskId}/work-blocks failed: ${res.status}`,
+    );
+  }
+}
+
 export async function deleteTask(taskId: string): Promise<void> {
   const res = await fetch(
     `${BACKEND_URL}/tasks/${encodeURIComponent(taskId)}`,

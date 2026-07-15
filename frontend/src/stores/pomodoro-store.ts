@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { toast } from "sonner";
+import { recordWorkBlock } from "@/app/actions";
 import type { AlarmSound } from "@/lib/alarm";
 
 export type PomodoroPhase = "focus" | "break" | "long_break";
@@ -91,12 +93,29 @@ function todayKey(): string {
   return dayKeyOf(new Date());
 }
 
+// Fire-and-forget persistence of a completed focus block. Stopped (aborted)
+// sessions never call this - only a block that finishes counts. Blocks
+// without a linked task have nowhere to attach, so they stay client-side.
+// A failed save never disturbs the timer - the user just loses one history
+// row.
+function persistFocusBlock(
+  taskId: string | null,
+  startedAt: number,
+  endedAt: number,
+): void {
+  if (!taskId || endedAt <= startedAt) return;
+  recordWorkBlock({ taskId, startedAt, endedAt }).catch((error) => {
+    console.error("Could not save work block:", error);
+    toast.error("Couldn't save the work block", {
+      description: "The timer is unaffected, but this block wasn't recorded.",
+    });
+  });
+}
+
 // The transition applied when a running phase's countdown reaches its end
 // with the page open - the only way a phase completes; expiring while the
 // page is closed never counts (see catchUp). `endedAt` is the phase's real
 // end, so follow-up phases are scheduled from it, not from Date.now().
-// (When work-block persistence lands, the POST for a finished focus block
-// goes here: start = endedAt - duration, end = endedAt.)
 function advance(
   state: Pick<
     PomodoroState,
@@ -175,7 +194,8 @@ export const usePomodoroStore = create<PomodoroState>()(
       },
 
       // Aborts the phase and returns to idle. A stopped focus block never
-      // counts toward stats or the daily goal.
+      // counts toward stats or the daily goal, and is never persisted -
+      // only a block that finishes is worth keeping.
       stop: () =>
         set({
           status: "idle",
@@ -189,6 +209,13 @@ export const usePomodoroStore = create<PomodoroState>()(
         const state = get();
         if (state.status !== "running" || state.endsAt == null) return;
         if (state.endsAt > Date.now()) return;
+        if (state.phase === "focus") {
+          persistFocusBlock(
+            state.taskId,
+            state.endsAt - phaseDurationMs("focus", state.settings),
+            state.endsAt,
+          );
+        }
         set({
           ...advance(state, state.endsAt),
           alarm: { endedPhase: state.phase, startedAt: Date.now() },
@@ -205,8 +232,8 @@ export const usePomodoroStore = create<PomodoroState>()(
           return;
         }
         // The phase expired while the page was closed. The user may not
-        // have been working, so the block is discarded like a stopped
-        // session: no stats, no daily goal, no alarm - and later, no POST.
+        // have been working, so the block is discarded entirely: no stats,
+        // no daily goal, no alarm, no POST.
         set({
           status: "idle",
           phase: "focus",
