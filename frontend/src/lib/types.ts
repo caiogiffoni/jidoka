@@ -14,6 +14,14 @@ export interface Task {
   id: string;
   title: string;
   description?: string;
+  projectId?: string;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  colorSlot: number;
+  createdAt: string;
 }
 
 // Array order within a column is the display order; the backend persists it

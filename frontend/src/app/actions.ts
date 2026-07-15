@@ -1,13 +1,20 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { BACKEND_URL, toTask, type ApiTask } from "@/lib/api";
-import type { ColumnId, Task } from "@/lib/types";
+import {
+  BACKEND_URL,
+  toProject,
+  toTask,
+  type ApiProject,
+  type ApiTask,
+} from "@/lib/api";
+import type { ColumnId, Project, Task } from "@/lib/types";
 
 export async function createTask(input: {
   columnId: ColumnId;
   title: string;
   description?: string;
+  projectId?: string;
 }): Promise<Task> {
   const res = await fetch(`${BACKEND_URL}/tasks`, {
     method: "POST",
@@ -16,14 +23,33 @@ export async function createTask(input: {
       title: input.title,
       description: input.description ?? null,
       column_id: input.columnId,
+      project_id: input.projectId ?? null,
     }),
   });
   if (!res.ok) {
     throw new Error(`POST /tasks failed: ${res.status}`);
   }
   const created: ApiTask = await res.json();
-  revalidatePath("/");
+  revalidatePath("/board");
   return toTask(created);
+}
+
+export async function createProject(name: string): Promise<Project> {
+  const res = await fetch(`${BACKEND_URL}/projects`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    throw new Error(`POST /projects failed: ${res.status}`);
+  }
+  const created: ApiProject = await res.json();
+  revalidatePath("/");
+  // AddTaskDialog reads the project list as a server-fetched prop on the
+  // board page, so it needs a refresh too or a project created here
+  // wouldn't be selectable there until an unrelated navigation refreshed it.
+  revalidatePath("/board");
+  return toProject(created);
 }
 
 export async function moveTask(input: {
@@ -45,7 +71,7 @@ export async function moveTask(input: {
   if (!res.ok) {
     throw new Error(`PATCH /tasks/${input.taskId}/move failed: ${res.status}`);
   }
-  revalidatePath("/");
+  revalidatePath("/board");
 }
 
 // Persist a completed pomodoro work block. No revalidatePath: the board
@@ -82,5 +108,5 @@ export async function deleteTask(taskId: string): Promise<void> {
   if (!res.ok) {
     throw new Error(`DELETE /tasks/${taskId} failed: ${res.status}`);
   }
-  revalidatePath("/");
+  revalidatePath("/board");
 }

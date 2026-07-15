@@ -1,11 +1,19 @@
-import { Board } from "@/components/board/board";
-import { AddTaskDialog } from "@/components/board/add-task-dialog";
-import { PomodoroMenu } from "@/components/pomodoro/pomodoro-menu";
+import Link from "next/link";
+import { KanbanSquare } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { fetchTasksByColumn } from "@/lib/api";
+import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
+import { WeeklyBarChart } from "@/components/projects/weekly-bar-chart";
+import { fetchDailyStats, fetchProjects } from "@/lib/api";
+import { buildWeeklyChart } from "@/lib/weekly-chart";
 
-export default async function Home() {
-  const initialTasks = await fetchTasksByColumn();
+export default async function DashboardPage() {
+  const [projects, stats] = await Promise.all([
+    fetchProjects(),
+    fetchDailyStats(7),
+  ]);
+  const days = buildWeeklyChart(projects, stats, 7);
+
   return (
     <main className="flex h-dvh flex-col bg-background">
       <header className="flex items-center gap-3 border-b bg-background px-4 py-3 sm:px-6">
@@ -19,12 +27,18 @@ export default async function Home() {
           automation with a human touch
         </p>
         <div className="ml-auto flex items-center gap-2">
-          <AddTaskDialog />
-          <PomodoroMenu />
+          <CreateProjectDialog />
+          <Button variant="ghost" size="icon" aria-label="Board" asChild>
+            <Link href="/board">
+              <KanbanSquare />
+            </Link>
+          </Button>
           <ThemeToggle />
         </div>
       </header>
-      <Board initialTasks={initialTasks} />
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+        <WeeklyBarChart days={days} projects={projects} />
+      </div>
     </main>
   );
 }

@@ -1,12 +1,22 @@
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, time, timedelta, timezone
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Query
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from db import create_db_and_tables, get_session
-from models import Task, TaskCreate, TaskMove, WorkBlock, WorkBlockCreate
+from db import PROJECT_COLOR_SLOT_SEQ, create_db_and_tables, get_session
+from models import (
+    DailyProjectStat,
+    Project,
+    ProjectCreate,
+    Task,
+    TaskCreate,
+    TaskMove,
+    WorkBlock,
+    WorkBlockCreate,
+)
 
 
 @asynccontextmanager
@@ -32,6 +42,8 @@ def list_tasks(session: Session = Depends(get_session)):
 
 @app.post("/tasks", response_model=Task, status_code=201)
 def create_task(payload: TaskCreate, session: Session = Depends(get_session)):
+    if payload.project_id is not None and session.get(Project, payload.project_id) is None:
+        raise HTTPException(status_code=404, detail="project not found")
     next_position = session.exec(
         select(func.count())
         .select_from(Task)

@@ -14,24 +14,27 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { useBoardStore } from "@/stores/board-store";
-import { COLUMNS, type ColumnId } from "@/lib/types";
+import { COLUMNS, type ColumnId, type Project } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { createTask } from "@/app/actions";
 
-export function AddTaskDialog() {
+export function AddTaskDialog({ projects }: { projects: Project[] }) {
   const addTask = useBoardStore((s) => s.addTask);
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [columnId, setColumnId] = useState<ColumnId>("todo");
+  const [projectId, setProjectId] = useState("");
 
   function reset() {
     setTitle("");
     setDescription("");
     setColumnId("todo");
+    setProjectId("");
   }
 
   async function submit() {
@@ -43,6 +46,7 @@ export function AddTaskDialog() {
         columnId,
         title: trimmed,
         description: description.trim() || undefined,
+        projectId: projectId || undefined,
       });
       addTask(columnId, task);
       reset();
@@ -109,6 +113,26 @@ export function AddTaskDialog() {
               placeholder="Add a description…"
               onChange={(e) => setDescription(e.target.value)}
             />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="new-task-project"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              Project <span className="font-normal">(optional)</span>
+            </label>
+            <NativeSelect
+              id="new-task-project"
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+            >
+              <option value="">No project</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </NativeSelect>
           </div>
           <div className="flex flex-col gap-1.5">
             <span
