@@ -11,7 +11,7 @@ The name comes from the Toyota principle _jidoka_: automation with a human touch
 - **Human-in-the-loop approval** - the agent never writes directly. It builds a diff of proposed changes, execution pauses, and resumes only on your decision.
 - **Paste-to-tickets** - paste a syllabus or project brief and get structured task extraction, routed through the same propose → approve flow.
 - **Semantic search** over cards via pgvector embeddings.
-- **Time tracking** - start a pomodoro-style work block from any card (or log minutes manually) to see how long each task actually took. Tasks link to projects, so time invested rolls up per project.
+- **Time tracking** - start a pomodoro-style work block from any card to see how long each task actually took. Tasks optionally link to a project, and a dashboard rolls time up per project with a 7-day stacked-bar chart.
 - **Traced and evaluated** - Langfuse tracing on every agent run, plus a pytest eval suite asserting correct tool selection and arguments. _(Results will be published here.)_
 
 ## Stack
@@ -56,16 +56,20 @@ Planned:
 
 **`Project`** - first-class grouping; each task optionally links to one project (`tasks.project_id`, nullable FK). Time rolls up work block → task → project for a per-project "time invested" view.
 
-| Field  | Type | Notes       |
-| ------ | ---- | ----------- |
-| `id`   | UUID | primary key |
-| `name` | str  |             |
+| Field        | Type     | Notes                                                                                              |
+| ------------ | -------- | ---------------------------------------------------------------------------------------------------- |
+| `id`         | UUID     | primary key                                                                                         |
+| `name`       | str      |                                                                                                       |
+| `color_slot` | int      | assigned once at creation from a Postgres sequence; never recomputed, so deleting/filtering projects never repaints survivors' chart colors |
+| `created_at` | datetime | UTC                                                                                                 |
 
 ## Status
 
 The base kanban is built and usable by hand: create, edit, and delete cards (confirm dialog + undo toast), drag them across columns with pointer or keyboard (with screen-reader announcements). Mutations are optimistic with rollback and error toasts; the frontend persists through Server Actions to FastAPI, the single writer to Postgres.
 
-A pomodoro timer lives in the header: the classic work / break / long-break cycle, with each focus block linkable to a board task, a repeating alarm that stops when acknowledged, and a daily goal. Work never auto-starts - breaks can. A running countdown survives page reloads, but a block only counts if it finishes while the page is open. A finished focus block linked to a task is persisted as a work-block row; stopped (aborted) sessions are never sent to the backend. Manual minutes entry and the per-project rollup are the next steps of time tracking.
+A pomodoro timer lives in the board header: the classic work / break / long-break cycle, with each focus block linkable to a board task, a repeating alarm that stops when acknowledged, and a daily goal. Work never auto-starts - breaks can. A running countdown survives page reloads, but a block only counts if it finishes while the page is open. A finished focus block linked to a task is persisted as a work-block row; stopped (aborted) sessions are never sent to the backend.
+
+A projects + weekly time dashboard lives at `/` (the kanban board moved to `/board`): create projects, and see the last 7 days of focus time as a stacked bar chart broken down by day and by project, with a "Not defined" bucket for tasks with no project. A task can pick a project at creation via the "Add task" dialog; reassigning an existing task's project isn't built yet (blocked on the same missing `PATCH /tasks/{id}` as title/description edits - see Known gaps in CLAUDE.md). Manual minutes entry has no UI yet either, though the backend already supports it.
 
 The agent, HITL approval flow, and semantic search are next, in that order.
 
@@ -94,3 +98,4 @@ The context files were bootstrapped with **impeccable**: `/impeccable init` capt
 - MCP server exposing the board to other agents
 - Duplicate-card detection via embeddings
 - Card attachments / vision, voice input, cost dashboard
+- Local-day bucketing for the weekly dashboard chart (`GET /work-blocks/stats/daily` currently buckets by UTC calendar day since timestamps are stored in UTC; work logged late at night in a non-UTC timezone can land on the wrong day)
