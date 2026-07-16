@@ -20,7 +20,6 @@ export interface Task {
 export interface Project {
   id: string;
   name: string;
-  colorSlot: number;
   createdAt: string;
 }
 

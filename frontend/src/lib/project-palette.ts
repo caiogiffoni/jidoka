@@ -21,9 +21,10 @@ export const PROJECT_PALETTE = [
   "#c547a3", // slot 3 - rose       (oklch(0.60 0.19 340))
 ] as const;
 
-// Never recompute from current rank/count - color_slot is assigned once at
-// Project creation server-side and is fixed for that project's lifetime,
-// so deleting or filtering projects never repaints the survivors.
-export function projectColor(colorSlot: number): string {
-  return PROJECT_PALETTE[colorSlot % PROJECT_PALETTE.length];
+// Index is the project's position in the created_at-ordered list (see
+// weekly-chart.ts / chart-legend.tsx) - purely a display detail, not a
+// persisted identity. Deleting or reordering projects can reassign colors;
+// that's an accepted tradeoff, not a bug.
+export function projectColor(index: number): string {
+  return PROJECT_PALETTE[index % PROJECT_PALETTE.length];
 }

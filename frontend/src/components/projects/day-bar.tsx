@@ -43,7 +43,7 @@ export function DayBar({
                       backgroundColor:
                         segment.projectId === null
                           ? undefined
-                          : projectColor(segment.colorSlot!),
+                          : projectColor(segment.colorIndex!),
                     }}
                     className={cn(
                       "w-full shrink-0 outline-none transition-[filter] duration-150 hover:brightness-110 focus-visible:brightness-110 focus-visible:ring-2 focus-visible:ring-ring/50",

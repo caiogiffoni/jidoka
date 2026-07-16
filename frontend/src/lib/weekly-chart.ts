@@ -4,14 +4,14 @@ import type { Project } from "./types";
 export interface ChartSegment {
   projectId: string | null;
   name: string;
-  colorSlot: number | null; // null => "Not defined" (Machine Gray, never a palette slot)
+  colorIndex: number | null; // null => "Not defined" (Machine Gray, never a palette color)
   minutes: number;
 }
 
 export interface ChartDay {
   date: string; // "YYYY-MM-DD", UTC
   label: string; // "Mon 7/8"
-  segments: ChartSegment[]; // real projects (colorSlot asc) then "Not defined" last
+  segments: ChartSegment[]; // real projects (created_at asc) then "Not defined" last
   total: number;
 }
 
@@ -61,21 +61,21 @@ export function buildWeeklyChart(
   }
 
   const orderedProjects = [...projects].sort(
-    (a, b) => a.colorSlot - b.colorSlot,
+    (a, b) => a.createdAt.localeCompare(b.createdAt),
   );
 
   return dateKeys.map((date) => {
     const dayLookup = lookup.get(date);
-    const segments: ChartSegment[] = orderedProjects.map((p) => ({
+    const segments: ChartSegment[] = orderedProjects.map((p, i) => ({
       projectId: p.id,
       name: p.name,
-      colorSlot: p.colorSlot,
+      colorIndex: i,
       minutes: dayLookup?.get(p.id) ?? 0,
     }));
     segments.push({
       projectId: null,
       name: NOT_DEFINED,
-      colorSlot: null,
+      colorIndex: null,
       minutes: dayLookup?.get("__none__") ?? 0,
     });
     return {

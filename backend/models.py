@@ -11,17 +11,15 @@ ColumnId = Literal["todo", "in_progress", "done"]
 class Project(SQLModel, table=True):
     """A time-tracking bucket tasks can optionally link to.
 
-    color_slot is assigned once, from a Postgres sequence, at creation and
-    never recomputed - the dashboard chart maps color_slot % palette_length
-    to a fixed hue, so deleting or filtering projects must never repaint
-    the survivors' colors.
+    Chart color is derived client-side from each project's position in the
+    created_at-ordered list (see frontend/src/lib/project-palette.ts) -
+    purely a display detail, so it isn't persisted here.
     """
 
     __tablename__ = "projects"
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     name: str
-    color_slot: int
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )

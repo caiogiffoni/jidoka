@@ -25,12 +25,11 @@ export function toTask(t: ApiTask): Task {
 export interface ApiProject {
   id: string;
   name: string;
-  color_slot: number;
   created_at: string;
 }
 
 export function toProject(p: ApiProject): Project {
-  return { id: p.id, name: p.name, colorSlot: p.color_slot, createdAt: p.created_at };
+  return { id: p.id, name: p.name, createdAt: p.created_at };
 }
 
 export async function fetchProjects(): Promise<Project[]> {
