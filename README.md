@@ -52,16 +52,13 @@ Current (SQLModel, in `backend/models.py`):
 | `minutes`    | int \| None      | for manual entry without timestamps       |
 | `created_at` | datetime         | UTC                                       |
 
-Planned:
+**`Project`** - first-class grouping; each task optionally links to one project (`tasks.project_id`, nullable FK, `ON DELETE SET NULL` - deleting a project unlinks its tasks rather than deleting them). Time rolls up work block → task → project for the weekly dashboard. Chart color isn't a DB field - the frontend derives it from each project's position in the `created_at`-ordered list (`lib/project-palette.ts`), so colors aren't a stable per-project identity.
 
-**`Project`** - first-class grouping; each task optionally links to one project (`tasks.project_id`, nullable FK). Time rolls up work block → task → project for a per-project "time invested" view.
-
-| Field        | Type     | Notes                                                                                              |
-| ------------ | -------- | ---------------------------------------------------------------------------------------------------- |
-| `id`         | UUID     | primary key                                                                                         |
-| `name`       | str      |                                                                                                       |
-| `color_slot` | int      | assigned once at creation from a Postgres sequence; never recomputed, so deleting/filtering projects never repaints survivors' chart colors |
-| `created_at` | datetime | UTC                                                                                                 |
+| Field        | Type     | Notes        |
+| ------------ | -------- | ------------ |
+| `id`         | UUID     | primary key  |
+| `name`       | str      |              |
+| `created_at` | datetime | UTC          |
 
 ## Status
 
