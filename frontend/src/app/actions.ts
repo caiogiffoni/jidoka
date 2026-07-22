@@ -100,6 +100,25 @@ export async function recordWorkBlock(input: {
   }
 }
 
+export async function logWorkBlock(input: {
+  taskId: string;
+  minutes: number;
+}): Promise<void> {
+  const res = await fetch(
+    `${BACKEND_URL}/tasks/${encodeURIComponent(input.taskId)}/work-blocks`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ minutes: input.minutes }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(
+      `POST /tasks/${input.taskId}/work-blocks failed: ${res.status}`,
+    );
+  }
+}
+
 export async function deleteTask(taskId: string): Promise<void> {
   const res = await fetch(
     `${BACKEND_URL}/tasks/${encodeURIComponent(taskId)}`,

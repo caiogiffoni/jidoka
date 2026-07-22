@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useBoardStore } from "@/stores/board-store";
+import { logWorkBlock } from "@/app/actions";
 import { COLUMNS, type Task } from "@/lib/types";
 import { ConfirmDeleteDialog } from "./delete-task";
 
@@ -32,6 +34,8 @@ export function TaskDialog({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [minutesInput, setMinutesInput] = useState("");
+  const [loggingTime, setLoggingTime] = useState(false);
 
   const columnId = columnOf(task.id);
   const columnTitle = COLUMNS.find((c) => c.id === columnId)?.title;
@@ -50,6 +54,22 @@ export function TaskDialog({
       description: description.trim() || undefined,
     });
     setEditing(false);
+  }
+
+  async function logTime() {
+    const minutes = Math.round(Number(minutesInput));
+    if (!Number.isFinite(minutes) || minutes < 1) return;
+    setLoggingTime(true);
+    try {
+      await logWorkBlock({ taskId: task.id, minutes });
+      toast.success(`Logged ${minutes} min`, { description: task.title });
+      setMinutesInput("");
+    } catch (error) {
+      console.error("Could not log work block:", error);
+      toast.error("Couldn't log time", { description: "Try again." });
+    } finally {
+      setLoggingTime(false);
+    }
   }
 
   return (
@@ -143,6 +163,41 @@ export function TaskDialog({
                   No description
                 </p>
               )}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="log-minutes"
+                className="text-xs font-medium text-muted-foreground"
+              >
+                Log time
+              </label>
+              <form
+                className="flex items-center gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  logTime();
+                }}
+              >
+                <Input
+                  id="log-minutes"
+                  type="number"
+                  min={1}
+                  step={1}
+                  inputMode="numeric"
+                  placeholder="Minutes"
+                  value={minutesInput}
+                  onChange={(e) => setMinutesInput(e.target.value)}
+                  className="w-24"
+                />
+                <Button
+                  type="submit"
+                  variant="outline"
+                  size="sm"
+                  disabled={loggingTime || !minutesInput}
+                >
+                  Add
+                </Button>
+              </form>
             </div>
             <Button
               variant="ghost"
