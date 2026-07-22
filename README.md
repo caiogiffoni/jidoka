@@ -79,6 +79,15 @@ cd frontend && pnpm install && pnpm dev   # Next.js on :3000
 
 The backend can also run outside Docker with `cd backend && uv run fastapi dev main.py` (expects Postgres on `localhost:5432`; override with `DATABASE_URL`).
 
+## Testing
+
+```bash
+docker compose up -d db          # Postgres needs to be reachable on :5432
+cd backend && uv run pytest -v
+```
+
+The suite in `backend/tests/` exercises the FastAPI endpoints against a real Postgres - each test runs inside a transaction that's rolled back afterward, so it never leaves data in the dev database. It runs automatically in CI (`.github/workflows/backend-tests.yml`) on any push or PR touching `backend/`.
+
 ## Design workflow
 
 UI work is governed by two design-context files checked into the repo, enforced by design skills for coding agents (currently `emil-design-eng` and `frontend-design` in `.claude/skills/`):
