@@ -84,9 +84,16 @@ The backend can also run outside Docker with `cd backend && uv run fastapi dev m
 ```bash
 docker compose up -d db          # Postgres needs to be reachable on :5432
 cd backend && uv run pytest -v
+
+cd frontend && pnpm test          # Vitest, no backend/Postgres needed
 ```
 
 The suite in `backend/tests/` exercises the FastAPI endpoints against a real Postgres - each test runs inside a transaction that's rolled back afterward, so it never leaves data in the dev database. It runs automatically in CI (`.github/workflows/backend-tests.yml`) on any push or PR touching `backend/`.
+## Backlog
+
+Deliberately deferred engineering follow-ups:
+
+- **Frontend E2E tests **
 
 ## Design workflow
 
