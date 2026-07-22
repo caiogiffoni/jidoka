@@ -14,20 +14,23 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { createProject } from "@/app/actions";
 
 export function CreateProjectDialog() {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
 
   async function submit() {
     const trimmed = name.trim();
     if (!trimmed || pending) return;
     setPending(true);
     try {
-      await createProject(trimmed);
+      await createProject({ name: trimmed, description: description.trim() || undefined });
       setName("");
+      setDescription("");
       setOpen(false);
     } catch (error) {
       console.error("Could not create project:", error);
@@ -44,7 +47,10 @@ export function CreateProjectDialog() {
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) setName("");
+        if (!next) {
+          setName("");
+          setDescription("");
+        }
       }}
     >
       <DialogTrigger asChild>
@@ -76,6 +82,21 @@ export function CreateProjectDialog() {
               value={name}
               placeholder="Project name…"
               onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="new-project-description"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              Description{" "}
+              <span className="font-normal">(optional, Markdown supported)</span>
+            </label>
+            <Textarea
+              id="new-project-description"
+              value={description}
+              placeholder="What is this project about…"
+              onChange={(e) => setDescription(e.target.value)}
             />
           </div>
           <DialogFooter>

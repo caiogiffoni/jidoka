@@ -35,7 +35,10 @@ export async function createTask(input: {
 }
 
 export async function createProject(input: {
+  input: {
   name: string;
+  description?: string;
+};
   description?: string;
 }): Promise<Project> {
   const res = await fetch(`${BACKEND_URL}/projects`, {
