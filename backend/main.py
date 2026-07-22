@@ -11,6 +11,7 @@ from models import (
     DailyProjectStat,
     Project,
     ProjectCreate,
+    ProjectUpdate,
     Task,
     TaskCreate,
     TaskMove,
@@ -99,7 +100,7 @@ def move_task(
 
 @app.post("/projects", response_model=Project, status_code=201)
 def create_project(payload: ProjectCreate, session: Session = Depends(get_session)):
-    project = Project(name=payload.name)
+    project = Project(name=payload.name, description=payload.description)
     session.add(project)
     session.commit()
     session.refresh(project)
@@ -109,6 +110,32 @@ def create_project(payload: ProjectCreate, session: Session = Depends(get_sessio
 @app.get("/projects", response_model=list[Project])
 def list_projects(session: Session = Depends(get_session)):
     return session.exec(select(Project).order_by(Project.created_at)).all()
+
+
+@app.patch("/projects/{project_id}", response_model=Project)
+def update_project(
+    project_id: uuid.UUID,
+    payload: ProjectUpdate,
+    session: Session = Depends(get_session),
+):
+    project = session.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    project.name = payload.name
+    project.description = payload.description
+    session.add(project)
+    session.commit()
+    session.refresh(project)
+    return project
+
+
+@app.delete("/projects/{project_id}", status_code=204)
+def delete_project(project_id: uuid.UUID, session: Session = Depends(get_session)):
+    project = session.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    session.delete(project)
+    session.commit()
 
 
 @app.get("/work-blocks/stats/daily", response_model=list[DailyProjectStat])
