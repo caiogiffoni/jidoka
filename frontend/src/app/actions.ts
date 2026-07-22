@@ -34,11 +34,17 @@ export async function createTask(input: {
   return toTask(created);
 }
 
-export async function createProject(name: string): Promise<Project> {
+export async function createProject(input: {
+  name: string;
+  description?: string;
+}): Promise<Project> {
   const res = await fetch(`${BACKEND_URL}/projects`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({
+      name: input.name,
+      description: input.description ?? null,
+    }),
   });
   if (!res.ok) {
     throw new Error(`POST /projects failed: ${res.status}`);
@@ -50,6 +56,43 @@ export async function createProject(name: string): Promise<Project> {
   // wouldn't be selectable there until an unrelated navigation refreshed it.
   revalidatePath("/board");
   return toProject(created);
+}
+
+export async function updateProject(input: {
+  id: string;
+  name: string;
+  description?: string;
+}): Promise<Project> {
+  const res = await fetch(
+    `${BACKEND_URL}/projects/${encodeURIComponent(input.id)}`,
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: input.name,
+        description: input.description ?? null,
+      }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`PATCH /projects/${input.id} failed: ${res.status}`);
+  }
+  const updated: ApiProject = await res.json();
+  revalidatePath("/");
+  revalidatePath("/board");
+  return toProject(updated);
+}
+
+export async function deleteProject(id: string): Promise<void> {
+  const res = await fetch(
+    `${BACKEND_URL}/projects/${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) {
+    throw new Error(`DELETE /projects/${id} failed: ${res.status}`);
+  }
+  revalidatePath("/");
+  revalidatePath("/board");
 }
 
 export async function moveTask(input: {
