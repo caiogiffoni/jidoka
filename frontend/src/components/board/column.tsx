@@ -8,7 +8,7 @@ import {
 import { cn } from "@/lib/utils";
 import { SortableTaskCard } from "./task-card";
 import { AddTask } from "./add-task";
-import type { ColumnId, Task } from "@/lib/types";
+import type { ColumnId, Project, Task } from "@/lib/types";
 
 // The andon light, reduced to its minimum: station color lives only in the
 // status dot. Everything else on the column is neutral.
@@ -22,10 +22,12 @@ export function Column({
   id,
   title,
   tasks,
+  projects,
 }: {
   id: ColumnId;
   title: string;
   tasks: Task[];
+  projects: Project[];
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
 
@@ -57,7 +59,7 @@ export function Column({
             </div>
           )}
           {tasks.map((task) => (
-            <SortableTaskCard key={task.id} task={task} />
+            <SortableTaskCard key={task.id} task={task} projects={projects} />
           ))}
         </div>
       </SortableContext>

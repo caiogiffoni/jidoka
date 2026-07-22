@@ -1,9 +1,9 @@
 import ReactMarkdown from "react-markdown";
 
 // Hand-rolled prose styling (no @tailwindcss/typography dependency) for
-// rendering a project's Markdown description - kept in the same minimal,
-// no-extra-library spirit as the hand-rolled chart in weekly-bar-chart.tsx.
-export function ProjectDescription({ text }: { text: string }) {
+// rendering Markdown body text - kept in the same minimal, no-extra-library
+// spirit as the hand-rolled chart in weekly-bar-chart.tsx.
+export function MarkdownText({ text }: { text: string }) {
   return (
     <div
       className="text-sm leading-relaxed break-words

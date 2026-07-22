@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { ConfirmDeleteDialog } from "./delete-task";
 import { TaskDialog } from "./task-dialog";
-import type { Task } from "@/lib/types";
+import type { Project, Task } from "@/lib/types";
 
 export function TaskCard({
   task,
@@ -74,7 +74,13 @@ export function TaskCard({
   );
 }
 
-export function SortableTaskCard({ task }: { task: Task }) {
+export function SortableTaskCard({
+  task,
+  projects,
+}: {
+  task: Task;
+  projects: Project[];
+}) {
   const {
     attributes,
     listeners,
@@ -135,7 +141,12 @@ export function SortableTaskCard({ task }: { task: Task }) {
       >
         <TaskCard task={task} onDelete={() => setConfirmingDelete(true)} />
       </div>
-      <TaskDialog task={task} open={open} onOpenChange={setOpen} />
+      <TaskDialog
+        task={task}
+        projects={projects}
+        open={open}
+        onOpenChange={setOpen}
+      />
       <ConfirmDeleteDialog
         task={task}
         open={confirmingDelete}

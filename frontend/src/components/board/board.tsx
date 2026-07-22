@@ -20,6 +20,7 @@ import {
   COLUMNS,
   isColumnId,
   type ColumnId,
+  type Project,
   type Task,
   type TasksByColumn,
 } from "@/lib/types";
@@ -27,7 +28,13 @@ import { Column } from "./column";
 import { TaskCard } from "./task-card";
 import { moveTask } from "@/app/actions";
 
-export function Board({ initialTasks }: { initialTasks: TasksByColumn }) {
+export function Board({
+  initialTasks,
+  projects,
+}: {
+  initialTasks: TasksByColumn;
+  projects: Project[];
+}) {
   // Hydrate the store from the server-fetched board exactly once, before the
   // first subscription read, so SSR and the first client render agree. After
   // that the store owns board state; mutations update it optimistically.
@@ -173,6 +180,7 @@ export function Board({ initialTasks }: { initialTasks: TasksByColumn }) {
             id={column.id}
             title={column.title}
             tasks={tasks[column.id]}
+            projects={projects}
           />
         ))}
       </div>

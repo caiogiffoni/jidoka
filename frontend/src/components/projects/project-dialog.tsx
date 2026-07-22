@@ -13,10 +13,10 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { MarkdownText } from "@/components/ui/markdown-text";
 import { updateProject } from "@/app/actions";
 import type { Project } from "@/lib/types";
 import { DeleteProjectDialog } from "./delete-project-dialog";
-import { ProjectDescription } from "./project-description";
 
 export function ProjectDialog({
   project,
@@ -140,7 +140,7 @@ export function ProjectDialog({
                 Description
               </span>
               {project.description ? (
-                <ProjectDescription text={project.description} />
+                <MarkdownText text={project.description} />
               ) : (
                 <p className="text-sm text-muted-foreground italic">
                   No description

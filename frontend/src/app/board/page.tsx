@@ -40,7 +40,7 @@ export default async function BoardPage() {
           <ThemeToggle />
         </div>
       </header>
-      <Board initialTasks={initialTasks} />
+      <Board initialTasks={initialTasks} projects={projects} />
     </main>
   );
 }

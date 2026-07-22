@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -14,17 +14,21 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { MarkdownText } from "@/components/ui/markdown-text";
 import { useBoardStore } from "@/stores/board-store";
-import { logWorkBlock } from "@/app/actions";
-import { COLUMNS, type Task } from "@/lib/types";
+import { fetchTaskMinutes, logWorkBlock } from "@/app/actions";
+import { formatMinutes } from "@/lib/weekly-chart";
+import { COLUMNS, type Project, type Task } from "@/lib/types";
 import { ConfirmDeleteDialog } from "./delete-task";
 
 export function TaskDialog({
   task,
+  projects,
   open,
   onOpenChange,
 }: {
   task: Task;
+  projects: Project[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -36,9 +40,28 @@ export function TaskDialog({
   const [description, setDescription] = useState("");
   const [minutesInput, setMinutesInput] = useState("");
   const [loggingTime, setLoggingTime] = useState(false);
+  const [totalMinutes, setTotalMinutes] = useState<number | null>(null);
 
   const columnId = columnOf(task.id);
   const columnTitle = COLUMNS.find((c) => c.id === columnId)?.title;
+  const project = projects.find((p) => p.id === task.projectId);
+
+  // Refetch whenever the dialog opens or the task changes, and again after a
+  // successful manual log so the total reflects what was just added.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    fetchTaskMinutes(task.id)
+      .then((minutes) => {
+        if (!cancelled) setTotalMinutes(minutes);
+      })
+      .catch((error) => {
+        console.error("Could not load logged time:", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, task.id]);
 
   function startEditing() {
     setTitle(task.title);
@@ -64,6 +87,7 @@ export function TaskDialog({
       await logWorkBlock({ taskId: task.id, minutes });
       toast.success(`Logged ${minutes} min`, { description: task.title });
       setMinutesInput("");
+      setTotalMinutes((current) => (current ?? 0) + minutes);
     } catch (error) {
       console.error("Could not log work block:", error);
       toast.error("Couldn't log time", { description: "Try again." });
@@ -80,7 +104,7 @@ export function TaskDialog({
         if (!next) setEditing(false);
       }}
     >
-      <DialogContent>
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
         {editing ? (
           <form
             className="flex flex-col gap-3"
@@ -111,12 +135,14 @@ export function TaskDialog({
                 htmlFor="task-description"
                 className="text-xs font-medium text-muted-foreground"
               >
-                Description
+                Description{" "}
+                <span className="font-normal">(Markdown supported)</span>
               </label>
               <Textarea
                 id="task-description"
                 value={description}
                 placeholder="Add a description…"
+                className="min-h-32"
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>
@@ -140,24 +166,42 @@ export function TaskDialog({
                 {task.title}
               </DialogTitle>
             </DialogHeader>
-            {columnTitle && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              {columnTitle && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Status
+                  </span>
+                  <Badge variant="secondary" className="rounded-full">
+                    {columnTitle}
+                  </Badge>
+                </div>
+              )}
+              {project && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Project
+                  </span>
+                  <Badge variant="secondary" className="rounded-full">
+                    {project.name}
+                  </Badge>
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-muted-foreground">
-                  Status
+                  Time spent
                 </span>
                 <Badge variant="secondary" className="rounded-full">
-                  {columnTitle}
+                  {totalMinutes === null ? "…" : formatMinutes(totalMinutes)}
                 </Badge>
               </div>
-            )}
+            </div>
             <div className="flex flex-col gap-1.5">
               <span className="text-xs font-medium text-muted-foreground">
                 Description
               </span>
               {task.description ? (
-                <p className="text-sm whitespace-pre-wrap leading-relaxed">
-                  {task.description}
-                </p>
+                <MarkdownText text={task.description} />
               ) : (
                 <p className="text-sm text-muted-foreground italic">
                   No description

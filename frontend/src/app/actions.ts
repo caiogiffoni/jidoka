@@ -35,10 +35,7 @@ export async function createTask(input: {
 }
 
 export async function createProject(input: {
-  input: {
   name: string;
-  description?: string;
-};
   description?: string;
 }): Promise<Project> {
   const res = await fetch(`${BACKEND_URL}/projects`, {
@@ -95,6 +92,8 @@ export async function deleteProject(id: string): Promise<void> {
     throw new Error(`DELETE /projects/${id} failed: ${res.status}`);
   }
   revalidatePath("/");
+  // A deleted project unlinks (not deletes) its tasks server-side, so the
+  // board's project select needs a refresh to drop it from the options.
   revalidatePath("/board");
 }
 
@@ -163,6 +162,23 @@ export async function logWorkBlock(input: {
       `POST /tasks/${input.taskId}/work-blocks failed: ${res.status}`,
     );
   }
+}
+
+// Sum of a task's persisted work_blocks minutes, for the task detail dialog.
+// create_work_block always fills in `minutes` server-side (from the payload
+// or computed from started_at/ended_at), so a plain sum is enough here.
+export async function fetchTaskMinutes(taskId: string): Promise<number> {
+  const res = await fetch(
+    `${BACKEND_URL}/tasks/${encodeURIComponent(taskId)}/work-blocks`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) {
+    throw new Error(
+      `GET /tasks/${taskId}/work-blocks failed: ${res.status}`,
+    );
+  }
+  const blocks: { minutes: number | null }[] = await res.json();
+  return blocks.reduce((total, b) => total + (b.minutes ?? 0), 0);
 }
 
 export async function deleteTask(taskId: string): Promise<void> {
