@@ -165,7 +165,11 @@ def create_work_block(
 ):
     if session.get(Task, task_id) is None:
         raise HTTPException(status_code=404, detail="task not found")
-    block = WorkBlock(task_id=task_id, **payload.model_dump())
+    data = payload.model_dump()
+    if data["minutes"] is None:
+        duration = payload.ended_at - payload.started_at
+        data["minutes"] = max(1, round(duration.total_seconds() / 60))
+    block = WorkBlock(task_id=task_id, **data)
     session.add(block)
     session.commit()
     session.refresh(block)
