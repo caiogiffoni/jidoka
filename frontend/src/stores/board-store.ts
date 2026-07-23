@@ -11,7 +11,7 @@ interface BoardState {
   addTask: (columnId: ColumnId, task: Task) => void;
   updateTask: (
     taskId: string,
-    updates: Pick<Task, "title" | "description">,
+    updates: Pick<Task, "title" | "description" | "projectId">,
   ) => void;
   moveTaskToColumn: (
     taskId: string,

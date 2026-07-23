@@ -13,10 +13,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownText } from "@/components/ui/markdown-text";
 import { useBoardStore } from "@/stores/board-store";
-import { fetchTaskMinutes, logWorkBlock } from "@/app/actions";
+import {
+  fetchTaskMinutes,
+  logWorkBlock,
+  updateTask as persistTaskUpdate,
+} from "@/app/actions";
 import { formatMinutes } from "@/lib/weekly-chart";
 import { COLUMNS, type Project, type Task } from "@/lib/types";
 import { ConfirmDeleteDialog } from "./delete-task";
@@ -38,6 +43,8 @@ export function TaskDialog({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [saving, setSaving] = useState(false);
   const [minutesInput, setMinutesInput] = useState("");
   const [loggingTime, setLoggingTime] = useState(false);
   const [totalMinutes, setTotalMinutes] = useState<number | null>(null);
@@ -66,17 +73,35 @@ export function TaskDialog({
   function startEditing() {
     setTitle(task.title);
     setDescription(task.description ?? "");
+    setProjectId(task.projectId ?? "");
     setEditing(true);
   }
 
-  function save() {
+  async function save() {
     const trimmed = title.trim();
-    if (!trimmed) return;
-    updateTask(task.id, {
-      title: trimmed,
-      description: description.trim() || undefined,
-    });
-    setEditing(false);
+    if (!trimmed || saving) return;
+    setSaving(true);
+    try {
+      const updated = await persistTaskUpdate({
+        taskId: task.id,
+        title: trimmed,
+        description: description.trim() || undefined,
+        projectId: projectId || undefined,
+      });
+      updateTask(task.id, {
+        title: updated.title,
+        description: updated.description,
+        projectId: updated.projectId,
+      });
+      setEditing(false);
+    } catch (error) {
+      console.error("Could not update task:", error);
+      toast.error("Couldn't save task", {
+        description: "Nothing was saved. Check the connection and try again.",
+      });
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function logTime() {
@@ -146,16 +171,37 @@ export function TaskDialog({
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="task-project"
+                className="text-xs font-medium text-muted-foreground"
+              >
+                Project <span className="font-normal">(optional)</span>
+              </label>
+              <NativeSelect
+                id="task-project"
+                value={projectId}
+                onChange={(e) => setProjectId(e.target.value)}
+              >
+                <option value="">No project</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
             <DialogFooter>
               <Button
                 type="button"
                 variant="outline"
+                disabled={saving}
                 onClick={() => setEditing(false)}
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={!title.trim()}>
-                Save
+              <Button type="submit" disabled={!title.trim() || saving}>
+                {saving ? "Saving…" : "Save"}
               </Button>
             </DialogFooter>
           </form>

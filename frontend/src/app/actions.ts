@@ -34,6 +34,34 @@ export async function createTask(input: {
   return toTask(created);
 }
 
+export async function updateTask(input: {
+  taskId: string;
+  title: string;
+  description?: string;
+  projectId?: string;
+}): Promise<Task> {
+  const res = await fetch(
+    `${BACKEND_URL}/tasks/${encodeURIComponent(input.taskId)}`,
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: input.title,
+        description: input.description ?? null,
+        project_id: input.projectId ?? null,
+      }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`PATCH /tasks/${input.taskId} failed: ${res.status}`);
+  }
+  const updated: ApiTask = await res.json();
+  revalidatePath("/board");
+  // A project reassignment shifts the dashboard's per-project task counts.
+  revalidatePath("/");
+  return toTask(updated);
+}
+
 export async function createProject(input: {
   name: string;
   description?: string;
