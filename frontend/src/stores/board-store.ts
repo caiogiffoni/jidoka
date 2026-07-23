@@ -2,7 +2,12 @@ import { create } from "zustand";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { ColumnId, Task, TasksByColumn } from "@/lib/types";
 
-const emptyBoard: TasksByColumn = { todo: [], in_progress: [], done: [] };
+const emptyBoard: TasksByColumn = {
+  backlog: [],
+  todo: [],
+  in_progress: [],
+  done: [],
+};
 
 interface BoardState {
   tasks: TasksByColumn;
