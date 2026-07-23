@@ -71,6 +71,12 @@ class TaskCreate(SQLModel):
     project_id: uuid.UUID | None = None
 
 
+class TaskUpdate(SQLModel):
+    title: str
+    description: str | None = None
+    project_id: uuid.UUID | None = None
+
+
 class TaskMove(SQLModel):
     column_id: ColumnId
     position: int = Field(ge=0)

@@ -103,3 +103,66 @@ def test_b10_delete_missing_task_404s(client):
     """TESTING.md B10: deleting a task that doesn't exist is a 404."""
     response = client.delete("/tasks/00000000-0000-0000-0000-000000000000")
     assert response.status_code == 404
+
+
+def test_b41_update_task_title_description_and_project(client):
+    """TESTING.md B41: PATCH /tasks/{id} replaces title, description, and project_id."""
+    project = client.post("/projects", json={"name": "Alpha"}).json()
+    task = client.post("/tasks", json={"title": "Original"}).json()
+
+    response = client.patch(
+        f"/tasks/{task['id']}",
+        json={
+            "title": "Renamed",
+            "description": "Updated notes",
+            "project_id": project["id"],
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["title"] == "Renamed"
+    assert body["description"] == "Updated notes"
+    assert body["project_id"] == project["id"]
+
+
+def test_b42_update_task_can_unlink_project(client):
+    """TESTING.md B42: omitting project_id on update clears an existing link."""
+    project = client.post("/projects", json={"name": "Alpha"}).json()
+    task = client.post(
+        "/tasks", json={"title": "Linked", "project_id": project["id"]}
+    ).json()
+
+    response = client.patch(
+        f"/tasks/{task['id']}", json={"title": "Linked", "description": None}
+    )
+    assert response.status_code == 200
+    assert response.json()["project_id"] is None
+
+
+def test_b43_update_task_rejects_missing_project(client):
+    """TESTING.md B43: updating to a nonexistent project_id is a 404, not a 500."""
+    task = client.post("/tasks", json={"title": "x"}).json()
+    response = client.patch(
+        f"/tasks/{task['id']}",
+        json={
+            "title": "x",
+            "project_id": "00000000-0000-0000-0000-000000000000",
+        },
+    )
+    assert response.status_code == 404
+
+
+def test_b44_update_missing_task_404s(client):
+    """TESTING.md B44: PATCH on a nonexistent task is a 404."""
+    response = client.patch(
+        "/tasks/00000000-0000-0000-0000-000000000000",
+        json={"title": "x"},
+    )
+    assert response.status_code == 404
+
+
+def test_b45_update_task_requires_title(client):
+    """TESTING.md B45: PATCH /tasks/{id} without a title is rejected."""
+    task = client.post("/tasks", json={"title": "x"}).json()
+    response = client.patch(f"/tasks/{task['id']}", json={})
+    assert response.status_code == 422

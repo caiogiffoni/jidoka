@@ -15,6 +15,7 @@ from models import (
     Task,
     TaskCreate,
     TaskMove,
+    TaskUpdate,
     WorkBlock,
     WorkBlockCreate,
 )
@@ -51,6 +52,26 @@ def create_task(payload: TaskCreate, session: Session = Depends(get_session)):
         .where(Task.column_id == payload.column_id)
     ).one()
     task = Task(**payload.model_dump(), position=next_position)
+    session.add(task)
+    session.commit()
+    session.refresh(task)
+    return task
+
+
+@app.patch("/tasks/{task_id}", response_model=Task)
+def update_task(
+    task_id: uuid.UUID,
+    payload: TaskUpdate,
+    session: Session = Depends(get_session),
+):
+    task = session.get(Task, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="task not found")
+    if payload.project_id is not None and session.get(Project, payload.project_id) is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    task.title = payload.title
+    task.description = payload.description
+    task.project_id = payload.project_id
     session.add(task)
     session.commit()
     session.refresh(task)
