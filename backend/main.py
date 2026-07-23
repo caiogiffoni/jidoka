@@ -13,6 +13,7 @@ from models import (
     ProjectCreate,
     ProjectUpdate,
     Task,
+    TaskArchive,
     TaskCreate,
     TaskMove,
     TaskUpdate,
@@ -36,10 +37,14 @@ def read_health():
 
 
 @app.get("/tasks", response_model=list[Task])
-def list_tasks(session: Session = Depends(get_session)):
-    return session.exec(
-        select(Task).order_by(Task.column_id, Task.position, Task.created_at)
-    ).all()
+def list_tasks(
+    include_archived: bool = Query(default=False),
+    session: Session = Depends(get_session),
+):
+    query = select(Task).order_by(Task.column_id, Task.position, Task.created_at)
+    if not include_archived:
+        query = query.where(Task.archived.is_(False))
+    return session.exec(query).all()
 
 
 @app.post("/tasks", response_model=Task, status_code=201)
@@ -49,7 +54,7 @@ def create_task(payload: TaskCreate, session: Session = Depends(get_session)):
     next_position = session.exec(
         select(func.count())
         .select_from(Task)
-        .where(Task.column_id == payload.column_id)
+        .where(Task.column_id == payload.column_id, Task.archived.is_(False))
     ).one()
     task = Task(**payload.model_dump(), position=next_position)
     session.add(task)
@@ -82,7 +87,7 @@ def column_tasks(session: Session, column_id: str) -> list[Task]:
     return list(
         session.exec(
             select(Task)
-            .where(Task.column_id == column_id)
+            .where(Task.column_id == column_id, Task.archived.is_(False))
             .order_by(Task.position, Task.created_at)
         ).all()
     )
@@ -114,6 +119,35 @@ def move_task(
         t.position = index
     session.add_all(source)
     session.add_all(target)
+    session.commit()
+    session.refresh(task)
+    return task
+
+
+@app.patch("/tasks/{task_id}/archive", response_model=Task)
+def set_task_archived(
+    task_id: uuid.UUID,
+    payload: TaskArchive,
+    session: Session = Depends(get_session),
+):
+    task = session.get(Task, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="task not found")
+    if task.archived == payload.archived:
+        return task
+
+    if payload.archived:
+        remaining = [t for t in column_tasks(session, task.column_id) if t.id != task.id]
+        task.archived = True
+        for index, t in enumerate(remaining):
+            t.position = index
+        session.add_all(remaining)
+    else:
+        new_position = len(column_tasks(session, task.column_id))
+        task.archived = False
+        task.position = new_position
+
+    session.add(task)
     session.commit()
     session.refresh(task)
     return task

@@ -166,3 +166,17 @@ def test_b45_update_task_requires_title(client):
     task = client.post("/tasks", json={"title": "x"}).json()
     response = client.patch(f"/tasks/{task['id']}", json={})
     assert response.status_code == 422
+
+
+def test_b46_create_task_accepts_backlog_column(client):
+    """TESTING.md B46: "backlog" is a valid column_id, ordered before "todo"."""
+    backlog = client.post(
+        "/tasks", json={"title": "Someday", "column_id": "backlog"}
+    )
+    assert backlog.status_code == 201
+    assert backlog.json()["column_id"] == "backlog"
+
+    todo = client.post("/tasks", json={"title": "Now"}).json()
+    tasks = client.get("/tasks").json()
+    ids = [t["id"] for t in tasks]
+    assert ids.index(backlog.json()["id"]) < ids.index(todo["id"])

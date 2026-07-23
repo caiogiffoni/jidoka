@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import model_validator
 from sqlmodel import Field, SQLModel
 
-ColumnId = Literal["todo", "in_progress", "done"]
+ColumnId = Literal["backlog", "todo", "in_progress", "done"]
 
 
 class Project(SQLModel, table=True):
@@ -59,6 +59,7 @@ class Task(SQLModel, table=True):
     )
     # Display order within a column; the frontend renders tasks sorted by it.
     position: int
+    archived: bool = Field(default=False, index=True)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
@@ -80,6 +81,10 @@ class TaskUpdate(SQLModel):
 class TaskMove(SQLModel):
     column_id: ColumnId
     position: int = Field(ge=0)
+
+
+class TaskArchive(SQLModel):
+    archived: bool
 
 
 class WorkBlock(SQLModel, table=True):
