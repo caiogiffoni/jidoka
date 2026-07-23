@@ -5,15 +5,18 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
 import { ProjectList } from "@/components/projects/project-list";
 import { WeeklyBarChart } from "@/components/projects/weekly-bar-chart";
-import { fetchDailyStats, fetchProjects } from "@/lib/api";
+import { fetchDailyStats, fetchProjects, fetchTasksByColumn } from "@/lib/api";
 import { buildWeeklyChart } from "@/lib/weekly-chart";
+import { countTasksByProject } from "@/lib/project-task-counts";
 
 export default async function DashboardPage() {
-  const [projects, stats] = await Promise.all([
+  const [projects, stats, tasks] = await Promise.all([
     fetchProjects(),
     fetchDailyStats(7),
+    fetchTasksByColumn(),
   ]);
   const days = buildWeeklyChart(projects, stats, 7);
+  const taskCounts = countTasksByProject(tasks);
 
   return (
     <main className="flex h-dvh flex-col bg-background">
@@ -40,7 +43,7 @@ export default async function DashboardPage() {
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
           <WeeklyBarChart days={days} projects={projects} />
-          <ProjectList projects={projects} />
+          <ProjectList projects={projects} taskCounts={taskCounts} />
         </div>
       </div>
     </main>
