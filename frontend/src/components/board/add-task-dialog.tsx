@@ -74,7 +74,7 @@ export function AddTaskDialog({ projects }: { projects: Project[] }) {
           <Plus /> Add task
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add task</DialogTitle>
         </DialogHeader>

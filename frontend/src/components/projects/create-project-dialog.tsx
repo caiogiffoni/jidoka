@@ -58,7 +58,7 @@ export function CreateProjectDialog() {
           <Plus /> Add project
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add project</DialogTitle>
         </DialogHeader>

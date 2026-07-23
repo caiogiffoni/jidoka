@@ -72,7 +72,7 @@ export function ProjectDialog({
         if (!next) setEditing(false);
       }}
     >
-      <DialogContent>
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
         {editing ? (
           <form
             className="flex flex-col gap-3"

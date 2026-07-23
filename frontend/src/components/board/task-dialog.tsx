@@ -129,7 +129,7 @@ export function TaskDialog({
         if (!next) setEditing(false);
       }}
     >
-      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
         {editing ? (
           <form
             className="flex flex-col gap-3"
