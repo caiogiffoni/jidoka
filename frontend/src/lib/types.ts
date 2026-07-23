@@ -1,4 +1,5 @@
 export const COLUMNS = [
+  { id: "backlog", title: "Backlog" },
   { id: "todo", title: "To Do" },
   { id: "in_progress", title: "In Progress" },
   { id: "done", title: "Done" },

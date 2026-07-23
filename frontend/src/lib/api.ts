@@ -76,7 +76,12 @@ export async function fetchDailyStats(
 }
 
 export async function fetchTasksByColumn(): Promise<TasksByColumn> {
-  const grouped: TasksByColumn = { todo: [], in_progress: [], done: [] };
+  const grouped: TasksByColumn = {
+    backlog: [],
+    todo: [],
+    in_progress: [],
+    done: [],
+  };
 
   let apiTasks: ApiTask[];
   try {

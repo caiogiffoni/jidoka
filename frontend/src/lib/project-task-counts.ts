@@ -10,6 +10,7 @@ export function countTasksByProject(
     for (const task of tasks[column.id]) {
       if (!task.projectId) continue;
       const entry = (counts[task.projectId] ??= {
+        backlog: 0,
         todo: 0,
         in_progress: 0,
         done: 0,

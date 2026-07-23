@@ -7,7 +7,9 @@ function task(id: string, overrides: Partial<Task> = {}): Task {
 }
 
 beforeEach(() => {
-  useBoardStore.setState({ tasks: { todo: [], in_progress: [], done: [] } });
+  useBoardStore.setState({
+    tasks: { backlog: [], todo: [], in_progress: [], done: [] },
+  });
 });
 
 describe("addTask", () => {

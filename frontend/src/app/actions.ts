@@ -219,3 +219,18 @@ export async function deleteTask(taskId: string): Promise<void> {
   }
   revalidatePath("/board");
 }
+
+export async function archiveTask(taskId: string): Promise<void> {
+  const res = await fetch(
+    `${BACKEND_URL}/tasks/${encodeURIComponent(taskId)}/archive`,
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ archived: true }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`PATCH /tasks/${taskId}/archive failed: ${res.status}`);
+  }
+  revalidatePath("/board");
+}

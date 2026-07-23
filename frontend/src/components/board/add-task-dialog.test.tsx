@@ -19,7 +19,9 @@ const projects: Project[] = [
 ];
 
 beforeEach(() => {
-  useBoardStore.setState({ tasks: { todo: [], in_progress: [], done: [] } });
+  useBoardStore.setState({
+    tasks: { backlog: [], todo: [], in_progress: [], done: [] },
+  });
   vi.mocked(createTask).mockReset();
 });
 

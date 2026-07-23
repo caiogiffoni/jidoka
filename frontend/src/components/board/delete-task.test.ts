@@ -28,7 +28,7 @@ function lastToastOptions(): ToastOptions {
 
 beforeEach(() => {
   useBoardStore.setState({
-    tasks: { todo: [task], in_progress: [], done: [] },
+    tasks: { backlog: [], todo: [task], in_progress: [], done: [] },
   });
   vi.mocked(deleteTask).mockReset().mockResolvedValue(undefined);
   vi.mocked(toast).mockClear();

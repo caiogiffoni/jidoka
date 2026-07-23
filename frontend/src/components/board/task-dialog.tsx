@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Pencil, Trash2 } from "lucide-react";
+import { Archive, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,7 @@ import {
 import { formatMinutes } from "@/lib/weekly-chart";
 import { COLUMNS, type Project, type Task } from "@/lib/types";
 import { ConfirmDeleteDialog } from "./delete-task";
+import { archiveTaskWithUndo } from "./archive-task";
 
 export function TaskDialog({
   task,
@@ -208,7 +209,7 @@ export function TaskDialog({
         ) : (
           <>
             <DialogHeader>
-              <DialogTitle className="pr-24 leading-snug">
+              <DialogTitle className="pr-32 leading-snug">
                 {task.title}
               </DialogTitle>
             </DialogHeader>
@@ -301,7 +302,19 @@ export function TaskDialog({
             <Button
               variant="ghost"
               size="icon-sm"
-              className="absolute top-2 right-18 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+              className="absolute top-2 right-18"
+              onClick={() => {
+                onOpenChange(false);
+                archiveTaskWithUndo(task);
+              }}
+            >
+              <Archive />
+              <span className="sr-only">Archive task</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="absolute top-2 right-26 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
               onClick={() => setConfirmingDelete(true)}
             >
               <Trash2 />

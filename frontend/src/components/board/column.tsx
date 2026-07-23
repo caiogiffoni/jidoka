@@ -13,6 +13,7 @@ import type { ColumnId, Project, Task } from "@/lib/types";
 // The andon light, reduced to its minimum: station color lives only in the
 // status dot. Everything else on the column is neutral.
 const DOTS: Record<ColumnId, string> = {
+  backlog: "bg-muted-foreground",
   todo: "bg-sky-500",
   in_progress: "bg-amber-500",
   done: "bg-emerald-500",
