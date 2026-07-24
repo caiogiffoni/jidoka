@@ -8,7 +8,7 @@ import {
   type ApiProject,
   type ApiTask,
 } from "@/lib/api";
-import type { ColumnId, Project, Task } from "@/lib/types";
+import type { ChecklistItem, ColumnId, Project, Task } from "@/lib/types";
 
 export async function createTask(input: {
   columnId: ColumnId;
@@ -34,11 +34,16 @@ export async function createTask(input: {
   return toTask(created);
 }
 
+// PATCH /tasks/{id} is a full replace, so every call must carry the task's
+// complete state - including the checklist - not just the fields the caller
+// means to change, or it'll silently wipe the rest (e.g. the checklist, if a
+// title/description edit forgot to pass it through).
 export async function updateTask(input: {
   taskId: string;
   title: string;
   description?: string;
   projectId?: string;
+  checklist?: ChecklistItem[];
 }): Promise<Task> {
   const res = await fetch(
     `${BACKEND_URL}/tasks/${encodeURIComponent(input.taskId)}`,
@@ -49,6 +54,7 @@ export async function updateTask(input: {
         title: input.title,
         description: input.description ?? null,
         project_id: input.projectId ?? null,
+        checklist: input.checklist ?? [],
       }),
     },
   );

@@ -16,7 +16,7 @@ interface BoardState {
   addTask: (columnId: ColumnId, task: Task) => void;
   updateTask: (
     taskId: string,
-    updates: Pick<Task, "title" | "description" | "projectId">,
+    updates: Partial<Pick<Task, "title" | "description" | "projectId" | "checklist">>,
   ) => void;
   moveTaskToColumn: (
     taskId: string,

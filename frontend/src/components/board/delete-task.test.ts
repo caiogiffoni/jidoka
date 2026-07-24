@@ -14,7 +14,7 @@ import { useBoardStore } from "@/stores/board-store";
 import { deleteTaskWithUndo } from "./delete-task";
 import type { Task } from "@/lib/types";
 
-const task: Task = { id: "a", title: "Task A" };
+const task: Task = { id: "a", title: "Task A", checklist: [] };
 
 interface ToastOptions {
   action: { onClick: () => void };

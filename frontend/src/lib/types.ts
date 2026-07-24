@@ -11,11 +11,17 @@ export function isColumnId(id: unknown): id is ColumnId {
   return COLUMNS.some((c) => c.id === id);
 }
 
+export interface ChecklistItem {
+  text: string;
+  checked: boolean;
+}
+
 export interface Task {
   id: string;
   title: string;
   description?: string;
   projectId?: string;
+  checklist: ChecklistItem[];
 }
 
 export interface Project {

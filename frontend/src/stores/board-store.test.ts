@@ -3,7 +3,7 @@ import { useBoardStore } from "./board-store";
 import type { Task } from "@/lib/types";
 
 function task(id: string, overrides: Partial<Task> = {}): Task {
-  return { id, title: `Task ${id}`, ...overrides };
+  return { id, title: `Task ${id}`, checklist: [], ...overrides };
 }
 
 beforeEach(() => {

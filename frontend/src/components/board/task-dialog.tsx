@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Archive, Pencil, Trash2 } from "lucide-react";
+import { Archive, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownText } from "@/components/ui/markdown-text";
+import { cn } from "@/lib/utils";
 import { useBoardStore } from "@/stores/board-store";
 import {
   fetchTaskMinutes,
@@ -23,7 +25,7 @@ import {
   updateTask as persistTaskUpdate,
 } from "@/app/actions";
 import { formatMinutes } from "@/lib/weekly-chart";
-import { COLUMNS, type Project, type Task } from "@/lib/types";
+import { COLUMNS, type ChecklistItem, type Project, type Task } from "@/lib/types";
 import { ConfirmDeleteDialog } from "./delete-task";
 import { archiveTaskWithUndo } from "./archive-task";
 
@@ -49,6 +51,7 @@ export function TaskDialog({
   const [minutesInput, setMinutesInput] = useState("");
   const [loggingTime, setLoggingTime] = useState(false);
   const [totalMinutes, setTotalMinutes] = useState<number | null>(null);
+  const [newItemText, setNewItemText] = useState("");
 
   const columnId = columnOf(task.id);
   const columnTitle = COLUMNS.find((c) => c.id === columnId)?.title;
@@ -88,11 +91,15 @@ export function TaskDialog({
         title: trimmed,
         description: description.trim() || undefined,
         projectId: projectId || undefined,
+        // The edit form doesn't touch the checklist - carry it through
+        // unchanged, since PATCH /tasks/{id} is a full replace.
+        checklist: task.checklist,
       });
       updateTask(task.id, {
         title: updated.title,
         description: updated.description,
         projectId: updated.projectId,
+        checklist: updated.checklist,
       });
       setEditing(false);
     } catch (error) {
@@ -103,6 +110,48 @@ export function TaskDialog({
     } finally {
       setSaving(false);
     }
+  }
+
+  // Checklist edits happen straight from view mode (no separate edit step,
+  // like Trello) - optimistic update first for instant checkbox feedback,
+  // then persist; roll back and toast if the server rejects it.
+  async function persistChecklist(next: ChecklistItem[]) {
+    const previous = task.checklist;
+    updateTask(task.id, { checklist: next });
+    try {
+      await persistTaskUpdate({
+        taskId: task.id,
+        title: task.title,
+        description: task.description,
+        projectId: task.projectId,
+        checklist: next,
+      });
+    } catch (error) {
+      console.error("Could not update checklist:", error);
+      updateTask(task.id, { checklist: previous });
+      toast.error("Couldn't update checklist", {
+        description: "Nothing was saved. Check the connection and try again.",
+      });
+    }
+  }
+
+  function toggleChecklistItem(index: number) {
+    persistChecklist(
+      task.checklist.map((item, i) =>
+        i === index ? { ...item, checked: !item.checked } : item,
+      ),
+    );
+  }
+
+  function removeChecklistItem(index: number) {
+    persistChecklist(task.checklist.filter((_, i) => i !== index));
+  }
+
+  function addChecklistItem() {
+    const text = newItemText.trim();
+    if (!text) return;
+    setNewItemText("");
+    persistChecklist([...task.checklist, { text, checked: false }]);
   }
 
   async function logTime() {
@@ -254,6 +303,63 @@ export function TaskDialog({
                   No description
                 </p>
               )}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium text-muted-foreground">
+                Checklist
+                {task.checklist.length > 0 &&
+                  ` (${task.checklist.filter((i) => i.checked).length}/${task.checklist.length})`}
+              </span>
+              {task.checklist.map((item, index) => (
+                <label
+                  key={index}
+                  className="flex items-center gap-2 text-sm"
+                >
+                  <Checkbox
+                    checked={item.checked}
+                    onCheckedChange={() => toggleChecklistItem(index)}
+                  />
+                  <span
+                    className={cn(
+                      "flex-1",
+                      item.checked && "text-muted-foreground line-through",
+                    )}
+                  >
+                    {item.text}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Remove ${item.text}`}
+                    className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => removeChecklistItem(index)}
+                  >
+                    <Trash2 />
+                  </Button>
+                </label>
+              ))}
+              <form
+                className="flex items-center gap-1.5"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  addChecklistItem();
+                }}
+              >
+                <Input
+                  value={newItemText}
+                  placeholder="Add an item…"
+                  onChange={(e) => setNewItemText(e.target.value)}
+                />
+                <Button
+                  type="submit"
+                  variant="outline"
+                  size="sm"
+                  disabled={!newItemText.trim()}
+                >
+                  <Plus /> Add
+                </Button>
+              </form>
             </div>
             <div className="flex flex-col gap-1.5">
               <label

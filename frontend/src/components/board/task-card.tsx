@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { X } from "lucide-react";
+import { SquareCheck, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { ConfirmDeleteDialog } from "./delete-task";
@@ -38,6 +38,13 @@ export function TaskCard({
         {task.description && (
           <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
             {task.description}
+          </p>
+        )}
+        {task.checklist.length > 0 && (
+          <p className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground">
+            <SquareCheck className="size-3.5" />
+            {task.checklist.filter((item) => item.checked).length}/
+            {task.checklist.length}
           </p>
         )}
       </CardContent>

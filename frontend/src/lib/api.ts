@@ -1,4 +1,4 @@
-import type { ColumnId, Project, Task, TasksByColumn } from "./types";
+import type { ChecklistItem, ColumnId, Project, Task, TasksByColumn } from "./types";
 
 // Server-side only: Server Components and Server Actions proxy to FastAPI,
 // which is the single writer to Postgres. The browser never calls it directly.
@@ -11,6 +11,7 @@ export interface ApiTask {
   column_id: ColumnId;
   position: number;
   project_id: string | null;
+  checklist: ChecklistItem[];
 }
 
 export function toTask(t: ApiTask): Task {
@@ -19,6 +20,7 @@ export function toTask(t: ApiTask): Task {
     title: t.title,
     description: t.description ?? undefined,
     projectId: t.project_id ?? undefined,
+    checklist: t.checklist,
   };
 }
 

@@ -33,7 +33,12 @@ beforeEach(() => {
 
 it("submits the trimmed title, chosen project, and selected column", async () => {
   const user = userEvent.setup();
-  const created: Task = { id: "t1", title: "Write docs", projectId: "p1" };
+  const created: Task = {
+    id: "t1",
+    title: "Write docs",
+    projectId: "p1",
+    checklist: [],
+  };
   vi.mocked(createTask).mockResolvedValue(created);
 
   render(<AddTaskDialog projects={projects} />);
