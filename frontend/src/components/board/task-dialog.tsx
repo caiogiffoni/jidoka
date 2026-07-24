@@ -26,6 +26,7 @@ import {
   updateTask as persistTaskUpdate,
 } from "@/app/actions";
 import { formatMinutes } from "@/lib/weekly-chart";
+import { formatDueDate, isOverdue } from "@/lib/due-date";
 import { COLUMNS, type ChecklistItem, type Project, type Task } from "@/lib/types";
 import { ConfirmDeleteDialog } from "./delete-task";
 import { archiveTaskWithUndo } from "./archive-task";
@@ -48,6 +49,7 @@ export function TaskDialog({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [projectId, setProjectId] = useState("");
+  const [dueDate, setDueDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [minutesInput, setMinutesInput] = useState("");
   const [loggingTime, setLoggingTime] = useState(false);
@@ -80,6 +82,7 @@ export function TaskDialog({
     setTitle(task.title);
     setDescription(task.description ?? "");
     setProjectId(task.projectId ?? "");
+    setDueDate(task.dueDate ?? "");
     setEditing(true);
   }
 
@@ -93,6 +96,7 @@ export function TaskDialog({
         title: trimmed,
         description: description.trim() || undefined,
         projectId: projectId || undefined,
+        dueDate: dueDate || undefined,
         // The edit form doesn't touch the checklist - carry it through
         // unchanged, since PATCH /tasks/{id} is a full replace.
         checklist: task.checklist,
@@ -101,6 +105,7 @@ export function TaskDialog({
         title: updated.title,
         description: updated.description,
         projectId: updated.projectId,
+        dueDate: updated.dueDate,
         checklist: updated.checklist,
       });
       setEditing(false);
@@ -126,6 +131,7 @@ export function TaskDialog({
         title: task.title,
         description: task.description,
         projectId: task.projectId,
+        dueDate: task.dueDate,
         checklist: next,
       });
     } catch (error) {
@@ -229,25 +235,41 @@ export function TaskDialog({
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>
-            <div className="flex flex-col gap-1.5">
-              <label
-                htmlFor="task-project"
-                className="text-xs font-medium text-muted-foreground"
-              >
-                Project <span className="font-normal">(optional)</span>
-              </label>
-              <NativeSelect
-                id="task-project"
-                value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-              >
-                <option value="">No project</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </NativeSelect>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="task-project"
+                  className="text-xs font-medium text-muted-foreground"
+                >
+                  Project <span className="font-normal">(optional)</span>
+                </label>
+                <NativeSelect
+                  id="task-project"
+                  value={projectId}
+                  onChange={(e) => setProjectId(e.target.value)}
+                >
+                  <option value="">No project</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="task-due-date"
+                  className="text-xs font-medium text-muted-foreground"
+                >
+                  Due date <span className="font-normal">(optional)</span>
+                </label>
+                <Input
+                  id="task-due-date"
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                />
+              </div>
             </div>
             <DialogFooter>
               <Button
@@ -288,6 +310,21 @@ export function TaskDialog({
                   </span>
                   <Badge variant="secondary" className="rounded-full">
                     {project.name}
+                  </Badge>
+                </div>
+              )}
+              {task.dueDate && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Due
+                  </span>
+                  <Badge
+                    variant={
+                      isOverdue(task.dueDate, columnId) ? "destructive" : "secondary"
+                    }
+                    className="rounded-full"
+                  >
+                    {formatDueDate(task.dueDate)}
                   </Badge>
                 </div>
               )}

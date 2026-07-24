@@ -185,7 +185,13 @@ export function Board({
         ))}
       </div>
       <DragOverlay>
-        {activeTask && <TaskCard task={activeTask} overlay />}
+        {activeTask && (
+          <TaskCard
+            task={activeTask}
+            columnId={columnOf(activeTask.id)}
+            overlay
+          />
+        )}
       </DragOverlay>
     </DndContext>
   );

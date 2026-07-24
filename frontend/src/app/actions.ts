@@ -44,6 +44,7 @@ export async function updateTask(input: {
   description?: string;
   projectId?: string;
   checklist?: ChecklistItem[];
+  dueDate?: string;
 }): Promise<Task> {
   const res = await fetch(
     `${BACKEND_URL}/tasks/${encodeURIComponent(input.taskId)}`,
@@ -55,6 +56,7 @@ export async function updateTask(input: {
         description: input.description ?? null,
         project_id: input.projectId ?? null,
         checklist: input.checklist ?? [],
+        due_date: input.dueDate ?? null,
       }),
     },
   );

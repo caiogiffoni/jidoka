@@ -60,7 +60,12 @@ export function Column({
             </div>
           )}
           {tasks.map((task) => (
-            <SortableTaskCard key={task.id} task={task} projects={projects} />
+            <SortableTaskCard
+              key={task.id}
+              task={task}
+              columnId={id}
+              projects={projects}
+            />
           ))}
         </div>
       </SortableContext>

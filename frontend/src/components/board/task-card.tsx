@@ -3,19 +3,22 @@
 import { useEffect, useRef, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { SquareCheck, X } from "lucide-react";
+import { CalendarClock, SquareCheck, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { formatDueDate, isOverdue } from "@/lib/due-date";
 import { ConfirmDeleteDialog } from "./delete-task";
 import { TaskDialog } from "./task-dialog";
-import type { Project, Task } from "@/lib/types";
+import type { ColumnId, Project, Task } from "@/lib/types";
 
 export function TaskCard({
   task,
+  columnId,
   overlay,
   onDelete,
 }: {
   task: Task;
+  columnId?: ColumnId;
   overlay?: boolean;
   onDelete?: () => void;
 }) {
@@ -40,12 +43,28 @@ export function TaskCard({
             {task.description}
           </p>
         )}
-        {task.checklist.length > 0 && (
-          <p className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground">
-            <SquareCheck className="size-3.5" />
-            {task.checklist.filter((item) => item.checked).length}/
-            {task.checklist.length}
-          </p>
+        {(task.checklist.length > 0 || task.dueDate) && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            {task.checklist.length > 0 && (
+              <span className="flex items-center gap-1">
+                <SquareCheck className="size-3.5" />
+                {task.checklist.filter((item) => item.checked).length}/
+                {task.checklist.length}
+              </span>
+            )}
+            {task.dueDate && (
+              <span
+                className={cn(
+                  "flex items-center gap-1",
+                  isOverdue(task.dueDate, columnId) &&
+                    "rounded-full bg-destructive/10 px-1.5 text-destructive",
+                )}
+              >
+                <CalendarClock className="size-3.5" />
+                {formatDueDate(task.dueDate)}
+              </span>
+            )}
+          </div>
         )}
       </CardContent>
       {onDelete && (
@@ -83,9 +102,11 @@ export function TaskCard({
 
 export function SortableTaskCard({
   task,
+  columnId,
   projects,
 }: {
   task: Task;
+  columnId: ColumnId;
   projects: Project[];
 }) {
   const {
@@ -146,7 +167,11 @@ export function SortableTaskCard({
           listeners?.onKeyDown?.(e);
         }}
       >
-        <TaskCard task={task} onDelete={() => setConfirmingDelete(true)} />
+        <TaskCard
+          task={task}
+          columnId={columnId}
+          onDelete={() => setConfirmingDelete(true)}
+        />
       </div>
       <TaskDialog
         task={task}

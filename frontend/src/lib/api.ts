@@ -12,6 +12,7 @@ export interface ApiTask {
   position: number;
   project_id: string | null;
   checklist: ChecklistItem[];
+  due_date: string | null;
 }
 
 export function toTask(t: ApiTask): Task {
@@ -21,6 +22,7 @@ export function toTask(t: ApiTask): Task {
     description: t.description ?? undefined,
     projectId: t.project_id ?? undefined,
     checklist: t.checklist,
+    dueDate: t.due_date ?? undefined,
   };
 }
 

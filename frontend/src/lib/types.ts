@@ -22,6 +22,8 @@ export interface Task {
   description?: string;
   projectId?: string;
   checklist: ChecklistItem[];
+  // ISO "YYYY-MM-DD", no time component.
+  dueDate?: string;
 }
 
 export interface Project {
