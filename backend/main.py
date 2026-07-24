@@ -178,10 +178,54 @@ def update_project(
         raise HTTPException(status_code=404, detail="project not found")
     project.name = payload.name
     project.description = payload.description
+    project.daily_enabled = payload.daily_enabled
+    project.daily_template = payload.daily_template
     session.add(project)
     session.commit()
     session.refresh(project)
     return project
+
+
+@app.post("/projects/daily-tasks/generate", response_model=list[Task], status_code=201)
+def generate_daily_tasks(session: Session = Depends(get_session)):
+    today = datetime.now(timezone.utc).date()
+    today_iso = today.isoformat()
+    due = [
+        p
+        for p in session.exec(
+            select(Project).where(Project.daily_enabled.is_(True))
+        ).all()
+        if p.daily_template and p.daily_last_generated != today_iso
+    ]
+    if not due:
+        return []
+
+    next_position = session.exec(
+        select(func.count())
+        .select_from(Task)
+        .where(Task.column_id == "todo", Task.archived.is_(False))
+    ).one()
+
+    created: list[Task] = []
+    for project in due:
+        checklist = "\n".join(f"- [ ] {item}" for item in project.daily_template)
+        task = Task(
+            title=f"daily-{today:%d-%m-%Y}-{project.name}",
+            description=checklist,
+            column_id="todo",
+            project_id=project.id,
+            position=next_position,
+        )
+        next_position += 1
+        project.daily_last_generated = today_iso
+        session.add(task)
+        session.add(project)
+        created.append(task)
+
+    session.commit()
+    for task in created:
+        session.refresh(task)
+    return created
 
 
 @app.delete("/projects/{project_id}", status_code=204)

@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from pydantic import model_validator
+from sqlalchemy import JSON, Column
 from sqlmodel import Field, SQLModel
 
 ColumnId = Literal["backlog", "todo", "in_progress", "done"]
@@ -24,6 +25,9 @@ class Project(SQLModel, table=True):
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
+    daily_enabled: bool = Field(default=False)
+    daily_template: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    daily_last_generated: str | None = Field(default=None)
 
 
 class ProjectCreate(SQLModel):
@@ -34,6 +38,15 @@ class ProjectCreate(SQLModel):
 class ProjectUpdate(SQLModel):
     name: str
     description: str | None = None
+    daily_enabled: bool = False
+    daily_template: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def strip_blank_template_items(self) -> "ProjectUpdate":
+        self.daily_template = [
+            item.strip() for item in self.daily_template if item.strip()
+        ]
+        return self
 
 
 class DailyProjectStat(SQLModel):

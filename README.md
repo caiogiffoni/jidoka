@@ -12,6 +12,7 @@ The name comes from the Toyota principle _jidoka_: automation with a human touch
 - **Paste-to-tickets** - paste a syllabus or project brief and get structured task extraction, routed through the same propose → approve flow.
 - **Semantic search** over cards via pgvector embeddings.
 - **Time tracking** - start a pomodoro-style work block from any card to see how long each task actually took. Tasks optionally link to a project, and a dashboard rolls time up per project with a 7-day stacked-bar chart.
+- **Daily project tasks** - opt a project into a checklist template (e.g. "post a standup message", "check the latest agent run"); a `daily-DD-MM-YYYY-<project>` card with that checklist is generated automatically once a day for every opted-in project.
 - **Traced and evaluated** - Langfuse tracing on every agent run, plus a pytest eval suite asserting correct tool selection and arguments. _(Results will be published here.)_
 
 ## Stack
@@ -55,12 +56,15 @@ Current (SQLModel, in `backend/models.py`):
 
 **`Project`** - first-class grouping; each task optionally links to one project (`tasks.project_id`, nullable FK, `ON DELETE SET NULL` - deleting a project unlinks its tasks rather than deleting them). Time rolls up work block → task → project for the weekly dashboard. Chart color isn't a DB field - the frontend derives it from each project's position in the `created_at`-ordered list (`lib/project-palette.ts`), so colors aren't a stable per-project identity.
 
-| Field         | Type        | Notes                           |
-| ------------- | ----------- | -------------------------------- |
-| `id`          | UUID        | primary key                     |
-| `name`        | str         |                                  |
-| `description` | str \| None | optional, rendered as Markdown  |
-| `created_at`  | datetime    | UTC                              |
+| Field                   | Type          | Notes                                                              |
+| ----------------------- | ------------- | -------------------------------------------------------------------- |
+| `id`                    | UUID          | primary key                                                        |
+| `name`                  | str           |                                                                     |
+| `description`           | str \| None   | optional, rendered as Markdown                                     |
+| `created_at`            | datetime      | UTC                                                                 |
+| `daily_enabled`         | bool          | default `false` - opts the project into daily task generation      |
+| `daily_template`        | list[str]     | JSON column; each line becomes a `- [ ]` checklist item on the card |
+| `daily_last_generated`  | str \| None   | UTC `YYYY-MM-DD`; guards against generating twice in the same day  |
 
 ## Status
 
