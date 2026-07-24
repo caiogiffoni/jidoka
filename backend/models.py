@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Literal
 
 from pydantic import model_validator
@@ -81,6 +81,7 @@ class Task(SQLModel, table=True):
     checklist: list[ChecklistItem] = Field(
         default_factory=list, sa_column=Column(JSON)
     )
+    due_date: date | None = None
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
@@ -98,6 +99,7 @@ class TaskUpdate(SQLModel):
     description: str | None = None
     project_id: uuid.UUID | None = None
     checklist: list[ChecklistItem] = Field(default_factory=list)
+    due_date: date | None = None
 
     @model_validator(mode="after")
     def strip_blank_checklist_items(self) -> "TaskUpdate":

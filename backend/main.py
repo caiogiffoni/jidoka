@@ -78,6 +78,7 @@ def update_task(
     task.description = payload.description
     task.project_id = payload.project_id
     task.checklist = [item.model_dump() for item in payload.checklist]
+    task.due_date = payload.due_date
     session.add(task)
     session.commit()
     session.refresh(task)
