@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownText } from "@/components/ui/markdown-text";
+import { MarkdownToolbar } from "@/components/markdown-toolbar";
 import { updateProject } from "@/app/actions";
 import type { Project } from "@/lib/types";
 import { DeleteProjectDialog } from "./delete-project-dialog";
@@ -43,6 +44,7 @@ export function ProjectDialog({
     initialMode === "edit" ? project.dailyTemplate : [],
   );
   const [saving, setSaving] = useState(false);
+  const descriptionRef = useRef<HTMLTextAreaElement>(null);
 
   function startEditing() {
     setName(project.name);
@@ -125,11 +127,17 @@ export function ProjectDialog({
                 Description{" "}
                 <span className="font-normal">(Markdown supported)</span>
               </label>
+              <MarkdownToolbar
+                textareaRef={descriptionRef}
+                value={description}
+                onChange={setDescription}
+              />
               <Textarea
                 id="project-description"
+                ref={descriptionRef}
                 value={description}
                 placeholder="What is this project about…"
-                className="min-h-32"
+                className="min-h-32 rounded-t-none border-t-0"
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>

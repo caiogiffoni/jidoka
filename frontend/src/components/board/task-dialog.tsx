@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Archive, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownText } from "@/components/ui/markdown-text";
+import { MarkdownToolbar } from "@/components/markdown-toolbar";
 import { cn } from "@/lib/utils";
 import { useBoardStore } from "@/stores/board-store";
 import {
@@ -52,6 +53,7 @@ export function TaskDialog({
   const [loggingTime, setLoggingTime] = useState(false);
   const [totalMinutes, setTotalMinutes] = useState<number | null>(null);
   const [newItemText, setNewItemText] = useState("");
+  const descriptionRef = useRef<HTMLTextAreaElement>(null);
 
   const columnId = columnOf(task.id);
   const columnTitle = COLUMNS.find((c) => c.id === columnId)?.title;
@@ -213,11 +215,17 @@ export function TaskDialog({
                 Description{" "}
                 <span className="font-normal">(Markdown supported)</span>
               </label>
+              <MarkdownToolbar
+                textareaRef={descriptionRef}
+                value={description}
+                onChange={setDescription}
+              />
               <Textarea
                 id="task-description"
+                ref={descriptionRef}
                 value={description}
                 placeholder="Add a description…"
-                className="min-h-32"
+                className="min-h-32 rounded-t-none border-t-0"
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>
