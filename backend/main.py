@@ -77,6 +77,7 @@ def update_task(
     task.title = payload.title
     task.description = payload.description
     task.project_id = payload.project_id
+    task.checklist = [item.model_dump() for item in payload.checklist]
     session.add(task)
     session.commit()
     session.refresh(task)
@@ -208,13 +209,12 @@ def generate_daily_tasks(session: Session = Depends(get_session)):
 
     created: list[Task] = []
     for project in due:
-        checklist = "\n".join(f"- [ ] {item}" for item in project.daily_template)
         task = Task(
             title=f"daily-{today:%d-%m-%Y}-{project.name}",
-            description=checklist,
             column_id="todo",
             project_id=project.id,
             position=next_position,
+            checklist=[{"text": item, "checked": False} for item in project.daily_template],
         )
         next_position += 1
         project.daily_last_generated = today_iso

@@ -58,6 +58,11 @@ class DailyProjectStat(SQLModel):
     minutes: float
 
 
+class ChecklistItem(SQLModel):
+    text: str
+    checked: bool = False
+
+
 class Task(SQLModel, table=True):
     __tablename__ = "tasks"
 
@@ -73,6 +78,9 @@ class Task(SQLModel, table=True):
     # Display order within a column; the frontend renders tasks sorted by it.
     position: int
     archived: bool = Field(default=False, index=True)
+    checklist: list[ChecklistItem] = Field(
+        default_factory=list, sa_column=Column(JSON)
+    )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
@@ -89,6 +97,17 @@ class TaskUpdate(SQLModel):
     title: str
     description: str | None = None
     project_id: uuid.UUID | None = None
+    checklist: list[ChecklistItem] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def strip_blank_checklist_items(self) -> "TaskUpdate":
+        cleaned = []
+        for item in self.checklist:
+            text = item.text.strip()
+            if text:
+                cleaned.append(ChecklistItem(text=text, checked=item.checked))
+        self.checklist = cleaned
+        return self
 
 
 class TaskMove(SQLModel):
