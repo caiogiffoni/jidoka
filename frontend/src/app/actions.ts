@@ -86,10 +86,15 @@ export async function createProject(input: {
   return toProject(created);
 }
 
+// PATCH /projects/{id} is a full replace (like PATCH /tasks/{id}), so every
+// call must carry the project's complete state - including the daily
+// template - not just the fields the caller means to change.
 export async function updateProject(input: {
   id: string;
   name: string;
   description?: string;
+  dailyEnabled?: boolean;
+  dailyTemplate?: string[];
 }): Promise<Project> {
   const res = await fetch(
     `${BACKEND_URL}/projects/${encodeURIComponent(input.id)}`,
@@ -99,6 +104,8 @@ export async function updateProject(input: {
       body: JSON.stringify({
         name: input.name,
         description: input.description ?? null,
+        daily_enabled: input.dailyEnabled ?? false,
+        daily_template: input.dailyTemplate ?? [],
       }),
     },
   );
@@ -109,6 +116,25 @@ export async function updateProject(input: {
   revalidatePath("/");
   revalidatePath("/board");
   return toProject(updated);
+}
+
+// Generates today's checklist card for each daily-enabled project. Called
+// once per browser-local calendar day by DailyTaskGenerator (mounted in the
+// root layout) - idempotent server-side per UTC day, so redundant calls are
+// harmless no-ops.
+export async function generateDailyTasks(): Promise<{ created: number }> {
+  const res = await fetch(`${BACKEND_URL}/projects/daily-tasks/generate`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    throw new Error(`POST /projects/daily-tasks/generate failed: ${res.status}`);
+  }
+  const created: ApiTask[] = await res.json();
+  if (created.length > 0) {
+    revalidatePath("/board");
+    revalidatePath("/");
+  }
+  return { created: created.length };
 }
 
 export async function deleteProject(id: string): Promise<void> {

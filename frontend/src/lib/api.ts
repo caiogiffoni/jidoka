@@ -27,6 +27,8 @@ export interface ApiProject {
   name: string;
   description: string | null;
   created_at: string;
+  daily_enabled: boolean;
+  daily_template: string[];
 }
 
 export function toProject(p: ApiProject): Project {
@@ -35,6 +37,8 @@ export function toProject(p: ApiProject): Project {
     name: p.name,
     description: p.description ?? undefined,
     createdAt: p.created_at,
+    dailyEnabled: p.daily_enabled,
+    dailyTemplate: p.daily_template,
   };
 }
 

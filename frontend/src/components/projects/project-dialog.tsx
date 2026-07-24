@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -35,12 +36,28 @@ export function ProjectDialog({
   const [description, setDescription] = useState(
     initialMode === "edit" ? (project.description ?? "") : "",
   );
+  const [dailyEnabled, setDailyEnabled] = useState(
+    initialMode === "edit" ? project.dailyEnabled : false,
+  );
+  const [dailyTemplate, setDailyTemplate] = useState<string[]>(
+    initialMode === "edit" ? project.dailyTemplate : [],
+  );
   const [saving, setSaving] = useState(false);
 
   function startEditing() {
     setName(project.name);
     setDescription(project.description ?? "");
+    setDailyEnabled(project.dailyEnabled);
+    setDailyTemplate(project.dailyTemplate);
     setEditing(true);
+  }
+
+  function updateTemplateItem(index: number, value: string) {
+    setDailyTemplate((items) => items.map((it, i) => (i === index ? value : it)));
+  }
+
+  function removeTemplateItem(index: number) {
+    setDailyTemplate((items) => items.filter((_, i) => i !== index));
   }
 
   async function save() {
@@ -52,6 +69,8 @@ export function ProjectDialog({
         id: project.id,
         name: trimmed,
         description: description.trim() || undefined,
+        dailyEnabled,
+        dailyTemplate: dailyTemplate.map((item) => item.trim()).filter(Boolean),
       });
       setEditing(false);
     } catch (error) {
@@ -114,6 +133,52 @@ export function ProjectDialog({
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>
+            <div className="flex flex-col gap-2 rounded-md border p-3">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <Checkbox
+                  checked={dailyEnabled}
+                  onCheckedChange={(checked) => setDailyEnabled(checked === true)}
+                />
+                Generate a daily checklist card
+              </label>
+              {dailyEnabled && (
+                <div className="flex flex-col gap-1.5 pl-6">
+                  <span className="text-xs text-muted-foreground">
+                    One card is created each day titled
+                    &ldquo;daily-DD-MM-YYYY-{project.name}&rdquo;, with each
+                    line below as a checklist item.
+                  </span>
+                  {dailyTemplate.map((item, index) => (
+                    <div key={index} className="flex items-center gap-1.5">
+                      <Input
+                        value={item}
+                        placeholder="e.g. write a check-in message in Slack"
+                        onChange={(e) => updateTemplateItem(index, e.target.value)}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Remove item"
+                        className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => removeTemplateItem(index)}
+                      >
+                        <Trash2 />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="self-start"
+                    onClick={() => setDailyTemplate((items) => [...items, ""])}
+                  >
+                    <Plus /> Add item
+                  </Button>
+                </div>
+              )}
+            </div>
             <DialogFooter>
               <Button
                 type="button"
@@ -147,6 +212,18 @@ export function ProjectDialog({
                 </p>
               )}
             </div>
+            {project.dailyEnabled && project.dailyTemplate.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium text-muted-foreground">
+                  Daily checklist
+                </span>
+                <ul className="list-inside list-disc text-sm text-muted-foreground">
+                  {project.dailyTemplate.map((item, index) => (
+                    <li key={index}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <Button
               variant="ghost"
               size="icon-sm"

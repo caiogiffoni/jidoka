@@ -20,6 +20,8 @@ const project: Project = {
   name: "Alpha",
   description: "Original notes",
   createdAt: "2026-01-01T00:00:00Z",
+  dailyEnabled: false,
+  dailyTemplate: [],
 };
 
 beforeEach(() => {
@@ -50,6 +52,8 @@ it("opens in edit mode when initialMode is edit and saves the trimmed fields", a
     id: "p1",
     name: "Alpha Renamed",
     description: "Original notes",
+    dailyEnabled: false,
+    dailyTemplate: [],
   });
 });
 

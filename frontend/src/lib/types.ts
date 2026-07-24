@@ -23,6 +23,11 @@ export interface Project {
   name: string;
   description?: string;
   createdAt: string;
+  // Daily task generation: when enabled, each template line becomes a
+  // checklist item on a single card generated once per day (see
+  // generateDailyTasks in app/actions.ts).
+  dailyEnabled: boolean;
+  dailyTemplate: string[];
 }
 
 // Array order within a column is the display order; the backend persists it
