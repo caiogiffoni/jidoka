@@ -157,7 +157,12 @@ def set_task_archived(
 
 @app.post("/projects", response_model=Project, status_code=201)
 def create_project(payload: ProjectCreate, session: Session = Depends(get_session)):
-    project = Project(name=payload.name, description=payload.description)
+    project = Project(
+        name=payload.name,
+        description=payload.description,
+        daily_enabled=payload.daily_enabled,
+        daily_template=payload.daily_template,
+    )
     session.add(project)
     session.commit()
     session.refresh(project)
@@ -211,7 +216,7 @@ def generate_daily_tasks(session: Session = Depends(get_session)):
     created: list[Task] = []
     for project in due:
         task = Task(
-            title=f"daily-{today:%d-%m-%Y}-{project.name}",
+            title=f"Daily - {today:%d-%m-%y} - {project.name}",
             column_id="todo",
             project_id=project.id,
             position=next_position,

@@ -30,9 +30,20 @@ class Project(SQLModel, table=True):
     daily_last_generated: str | None = Field(default=None)
 
 
+def _strip_blank_template_items(items: list[str]) -> list[str]:
+    return [item.strip() for item in items if item.strip()]
+
+
 class ProjectCreate(SQLModel):
     name: str
     description: str | None = None
+    daily_enabled: bool = False
+    daily_template: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def strip_blank_template_items(self) -> "ProjectCreate":
+        self.daily_template = _strip_blank_template_items(self.daily_template)
+        return self
 
 
 class ProjectUpdate(SQLModel):
@@ -43,9 +54,7 @@ class ProjectUpdate(SQLModel):
 
     @model_validator(mode="after")
     def strip_blank_template_items(self) -> "ProjectUpdate":
-        self.daily_template = [
-            item.strip() for item in self.daily_template if item.strip()
-        ]
+        self.daily_template = _strip_blank_template_items(self.daily_template)
         return self
 
 
