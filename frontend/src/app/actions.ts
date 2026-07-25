@@ -73,6 +73,8 @@ export async function updateTask(input: {
 export async function createProject(input: {
   name: string;
   description?: string;
+  dailyEnabled?: boolean;
+  dailyTemplate?: string[];
 }): Promise<Project> {
   const res = await fetch(`${BACKEND_URL}/projects`, {
     method: "POST",
@@ -80,6 +82,8 @@ export async function createProject(input: {
     body: JSON.stringify({
       name: input.name,
       description: input.description ?? null,
+      daily_enabled: input.dailyEnabled ?? false,
+      daily_template: input.dailyTemplate ?? [],
     }),
   });
   if (!res.ok) {

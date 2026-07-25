@@ -45,6 +45,7 @@ export function ProjectDialog({
   );
   const [saving, setSaving] = useState(false);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
+  const itemRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   function startEditing() {
     setName(project.name);
@@ -60,6 +61,16 @@ export function ProjectDialog({
 
   function removeTemplateItem(index: number) {
     setDailyTemplate((items) => items.filter((_, i) => i !== index));
+  }
+
+  // Focus the newly added row so typing can continue right away - without
+  // this, focus stays on the "Add item" button and a space in what you type
+  // next re-clicks it (native button behavior), silently adding blank rows.
+  function addTemplateItem() {
+    setDailyTemplate((items) => [...items, ""]);
+    requestAnimationFrame(() => {
+      itemRefs.current[itemRefs.current.length - 1]?.focus();
+    });
   }
 
   async function save() {
@@ -152,13 +163,16 @@ export function ProjectDialog({
               {dailyEnabled && (
                 <div className="flex flex-col gap-1.5 pl-6">
                   <span className="text-xs text-muted-foreground">
-                    One card is created each day titled
-                    &ldquo;daily-DD-MM-YYYY-{project.name}&rdquo;, with each
-                    line below as a checklist item.
+                    One card is created each day titled &ldquo;Daily -
+                    DD-MM-YY - {project.name}&rdquo;, with each line below as
+                    a checklist item.
                   </span>
                   {dailyTemplate.map((item, index) => (
                     <div key={index} className="flex items-center gap-1.5">
                       <Input
+                        ref={(el) => {
+                          itemRefs.current[index] = el;
+                        }}
                         value={item}
                         placeholder="e.g. write a check-in message in Slack"
                         onChange={(e) => updateTemplateItem(index, e.target.value)}
@@ -180,7 +194,7 @@ export function ProjectDialog({
                     variant="outline"
                     size="sm"
                     className="self-start"
-                    onClick={() => setDailyTemplate((items) => [...items, ""])}
+                    onClick={addTemplateItem}
                   >
                     <Plus /> Add item
                   </Button>
