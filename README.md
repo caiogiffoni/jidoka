@@ -7,12 +7,15 @@ The name comes from the Toyota principle _jidoka_: automation with a human touch
 ## What it does
 
 - **A real kanban board** - create, edit, and drag cards across columns by hand, like any Trello board. The agent is a layer on top, not the only way in.
+- **Card checklists** - any card can hold a Trello-style checklist, added at creation or afterward: check items off, add or remove them, and see progress (e.g. "2/4") right on the card face.
+- **Due dates** - set an optional due date on any card; overdue cards get a quiet red badge, both in the card dialog and on the card face.
+- **Markdown formatting toolbar** - bold, italic, lists, and links, one click each, on any description field.
 - **Chat with your board** - an agent with tools (`create_task`, `move_task`, `breakdown_task`, `prioritize_backlog`, `search_tasks`) that streams its actions to the UI as cards move live.
 - **Human-in-the-loop approval** - the agent never writes directly. It builds a diff of proposed changes, execution pauses, and resumes only on your decision.
 - **Paste-to-tickets** - paste a syllabus or project brief and get structured task extraction, routed through the same propose → approve flow.
 - **Semantic search** over cards via pgvector embeddings.
 - **Time tracking** - start a pomodoro-style work block from any card to see how long each task actually took. Tasks optionally link to a project, and a dashboard rolls time up per project with a 7-day stacked-bar chart.
-- **Daily project tasks** - opt a project into a checklist template (e.g. "post a standup message", "check the latest agent run"); a `daily-DD-MM-YYYY-<project>` card with that checklist is generated automatically once a day for every opted-in project.
+- **Daily project tasks** - opt a project into a checklist template (e.g. "post a standup message", "check the latest agent run") at creation or later; a `Daily - DD-MM-YY - <project>` card with that checklist is generated automatically once a day for every opted-in project.
 - **Traced and evaluated** - Langfuse tracing on every agent run, plus a pytest eval suite asserting correct tool selection and arguments. _(Results will be published here.)_
 
 ## Stack
@@ -33,15 +36,17 @@ Current (SQLModel, in `backend/models.py`):
 
 **`Task`** - one card on the board.
 
-| Field         | Type          | Notes                                             |
-| ------------- | ------------- | -------------------------------------------------- |
-| `id`          | UUID          | primary key                                       |
-| `title`       | str           |                                                    |
-| `description` | str \| None   |                                                    |
-| `column_id`   | str           | `todo` \| `in_progress` \| `done`, indexed        |
-| `project_id`  | UUID \| None  | FK → `projects.id`, `ON DELETE SET NULL`, indexed |
-| `position`    | int           | display order within the column, kept dense       |
-| `created_at`  | datetime      | UTC                                               |
+| Field         | Type                       | Notes                                             |
+| ------------- | -------------------------- | -------------------------------------------------- |
+| `id`          | UUID                       | primary key                                       |
+| `title`       | str                        |                                                    |
+| `description` | str \| None                |                                                    |
+| `column_id`   | str                        | `todo` \| `in_progress` \| `done`, indexed        |
+| `project_id`  | UUID \| None               | FK → `projects.id`, `ON DELETE SET NULL`, indexed |
+| `position`    | int                        | display order within the column, kept dense       |
+| `checklist`   | list[{text, checked}]      | JSON column; a Trello-style checklist on the card |
+| `due_date`    | date \| None                | optional; overdue → red badge (not `done`)        |
+| `created_at`  | datetime                   | UTC                                               |
 
 **`WorkBlock`** - one completed pomodoro or manually logged stretch of work on a task. Blocks are append-only rows, not a mutating counter, so history is kept. Timer blocks carry timestamps; manual entries carry only minutes (one of the two is required). Stopped (aborted) focus sessions are never persisted - only a block that finishes is worth keeping.
 
@@ -70,9 +75,15 @@ Current (SQLModel, in `backend/models.py`):
 
 The base kanban is built and usable by hand: create, edit, and delete cards (confirm dialog + undo toast), drag them across columns with pointer or keyboard (with screen-reader announcements). Mutations are optimistic with rollback and error toasts; the frontend persists through Server Actions to FastAPI, the single writer to Postgres.
 
+Any card can carry a checklist - drafted right in the "Add task" form, or added later from the task detail dialog's view mode with no need to enter edit mode first. Check an item, add one, or remove one and it saves immediately (optimistic, with rollback and a toast if the save fails); the board card face shows a quiet progress count (e.g. "2/4") whenever a card has one.
+
+Any card can also get a due date (edit mode, next to Project) and any description field gets a small Markdown toolbar - bold, italic, bulleted/numbered list, link, and a formatting cheatsheet - that wraps or prefixes the current text selection rather than rendering rich text (descriptions stay plain Markdown under the hood). An overdue card - past its due date and not in Done - gets a quiet red badge, on the card face and in the dialog; there's deliberately no separate "due soon" color, since the design system reserves its status hues for the column dot alone.
+
 A pomodoro timer lives in the board header: the classic work / break / long-break cycle, with each focus block linkable to a board task, a repeating alarm that stops when acknowledged, and a daily goal. Work never auto-starts - breaks can. A running countdown survives page reloads, but a block only counts if it finishes while the page is open. A finished focus block linked to a task is persisted as a work-block row; stopped (aborted) sessions are never sent to the backend.
 
 A projects + weekly time dashboard lives at `/` (the kanban board moved to `/board`): create projects, each with an optional Markdown description, and see the last 7 days of focus time as a stacked bar chart broken down by day and by project, with a "Not defined" bucket for tasks with no project. Each project row also shows its linked tasks' counts by board column (To Do / In Progress / Done). A task can link to a project at creation via the "Add task" dialog, or be reassigned later from the task detail dialog's edit mode. That dialog also renders a task's description as Markdown, shows the project it's linked to and the total time logged against it, and supports manual minutes entry independent of the pomodoro timer.
+
+Any project can opt into daily tasks via a "Generate a daily task" checkbox, available both when creating the project and later from its edit dialog. Checking it opens a small popup - styled like drafting a task - where you build the checklist template; it saves back into the project's own form rather than the board, so nothing shows up immediately. Once a day, a `Daily - DD-MM-YY - <project>` card is generated in To Do with that checklist (the same kind described above), for every opted-in project - idempotent per UTC day, so it's safe to trigger more than once. There's no real login system yet, so "once a day" is approximated client-side (fires on first app load per browser-local day) rather than tied to an actual sign-in event; that will move to the real login/session-start event once auth ships.
 
 The agent, HITL approval flow, and semantic search are next, in that order.
 
@@ -101,6 +112,7 @@ The suite in `backend/tests/` exercises the FastAPI endpoints against a real Pos
 Deliberately deferred engineering follow-ups:
 
 - **Frontend E2E tests **
+- **Daily task trigger** - move off the client-side "first load per day" approximation onto the real login/session-start event once auth ships
 
 ## Design workflow
 

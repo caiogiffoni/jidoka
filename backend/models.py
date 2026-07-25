@@ -96,11 +96,26 @@ class Task(SQLModel, table=True):
     )
 
 
+def _strip_blank_checklist_items(items: list[ChecklistItem]) -> list[ChecklistItem]:
+    cleaned = []
+    for item in items:
+        text = item.text.strip()
+        if text:
+            cleaned.append(ChecklistItem(text=text, checked=item.checked))
+    return cleaned
+
+
 class TaskCreate(SQLModel):
     title: str
     description: str | None = None
     column_id: ColumnId = "todo"
     project_id: uuid.UUID | None = None
+    checklist: list[ChecklistItem] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def strip_blank_checklist_items(self) -> "TaskCreate":
+        self.checklist = _strip_blank_checklist_items(self.checklist)
+        return self
 
 
 class TaskUpdate(SQLModel):
@@ -112,12 +127,7 @@ class TaskUpdate(SQLModel):
 
     @model_validator(mode="after")
     def strip_blank_checklist_items(self) -> "TaskUpdate":
-        cleaned = []
-        for item in self.checklist:
-            text = item.text.strip()
-            if text:
-                cleaned.append(ChecklistItem(text=text, checked=item.checked))
-        self.checklist = cleaned
+        self.checklist = _strip_blank_checklist_items(self.checklist)
         return self
 
 
