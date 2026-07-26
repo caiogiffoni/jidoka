@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
+import { ChecklistItemEditor } from "@/components/checklist-item-editor";
 import { useBoardStore } from "@/stores/board-store";
 import { COLUMNS, type ColumnId, type Project } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -29,12 +30,14 @@ export function AddTaskDialog({ projects }: { projects: Project[] }) {
   const [description, setDescription] = useState("");
   const [columnId, setColumnId] = useState<ColumnId>("todo");
   const [projectId, setProjectId] = useState("");
+  const [checklist, setChecklist] = useState<string[]>([]);
 
   function reset() {
     setTitle("");
     setDescription("");
     setColumnId("todo");
     setProjectId("");
+    setChecklist([]);
   }
 
   async function submit() {
@@ -47,6 +50,10 @@ export function AddTaskDialog({ projects }: { projects: Project[] }) {
         title: trimmed,
         description: description.trim() || undefined,
         projectId: projectId || undefined,
+        checklist: checklist
+          .map((text) => text.trim())
+          .filter(Boolean)
+          .map((text) => ({ text, checked: false })),
       });
       addTask(columnId, task);
       reset();
@@ -113,6 +120,12 @@ export function AddTaskDialog({ projects }: { projects: Project[] }) {
               placeholder="Add a description…"
               onChange={(e) => setDescription(e.target.value)}
             />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-muted-foreground">
+              Checklist <span className="font-normal">(optional)</span>
+            </span>
+            <ChecklistItemEditor items={checklist} onChange={setChecklist} />
           </div>
           <div className="flex flex-col gap-1.5">
             <label

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -17,6 +17,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { createProject } from "@/app/actions";
+import type { DailyTemplate } from "@/lib/types";
+import { DailyTemplateDialog } from "./daily-template-dialog";
 
 export function CreateProjectDialog() {
   const [open, setOpen] = useState(false);
@@ -24,32 +26,19 @@ export function CreateProjectDialog() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [dailyEnabled, setDailyEnabled] = useState(false);
-  const [dailyTemplate, setDailyTemplate] = useState<string[]>([]);
-  const itemRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const [dailyTemplate, setDailyTemplate] = useState<DailyTemplate | null>(null);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  // True only when the template popup closed via its own Save button - see
+  // ProjectDialog for why a ref (rather than checking dailyTemplate directly
+  // in the popup's onOpenChange) is what decides whether cancelling should
+  // revert the checkbox.
+  const savedTemplateRef = useRef(false);
 
   function reset() {
     setName("");
     setDescription("");
     setDailyEnabled(false);
-    setDailyTemplate([]);
-  }
-
-  function updateTemplateItem(index: number, value: string) {
-    setDailyTemplate((items) => items.map((it, i) => (i === index ? value : it)));
-  }
-
-  function removeTemplateItem(index: number) {
-    setDailyTemplate((items) => items.filter((_, i) => i !== index));
-  }
-
-  // Focus the newly added row so typing can continue right away - without
-  // this, focus stays on the "Add item" button and a space in what you type
-  // next re-clicks it (native button behavior), silently adding blank rows.
-  function addTemplateItem() {
-    setDailyTemplate((items) => [...items, ""]);
-    requestAnimationFrame(() => {
-      itemRefs.current[itemRefs.current.length - 1]?.focus();
-    });
+    setDailyTemplate(null);
   }
 
   async function submit() {
@@ -61,7 +50,7 @@ export function CreateProjectDialog() {
         name: trimmed,
         description: description.trim() || undefined,
         dailyEnabled,
-        dailyTemplate: dailyTemplate.map((item) => item.trim()).filter(Boolean),
+        dailyTemplate,
       });
       reset();
       setOpen(false);
@@ -133,47 +122,44 @@ export function CreateProjectDialog() {
             <label className="flex items-center gap-2 text-sm font-medium">
               <Checkbox
                 checked={dailyEnabled}
-                onCheckedChange={(checked) => setDailyEnabled(checked === true)}
+                onCheckedChange={(checked) => {
+                  const next = checked === true;
+                  setDailyEnabled(next);
+                  if (next) setTemplateDialogOpen(true);
+                }}
               />
-              Generate a daily checklist card
+              Generate a daily task
             </label>
             {dailyEnabled && (
               <div className="flex flex-col gap-1.5 pl-6">
-                <span className="text-xs text-muted-foreground">
-                  One card is created each day titled &ldquo;Daily - DD-MM-YY
-                  - {name.trim() || "Project Name"}&rdquo;, with each line
-                  below as a checklist item.
-                </span>
-                {dailyTemplate.map((item, index) => (
-                  <div key={index} className="flex items-center gap-1.5">
-                    <Input
-                      ref={(el) => {
-                        itemRefs.current[index] = el;
-                      }}
-                      value={item}
-                      placeholder="e.g. write a check-in message in Slack"
-                      onChange={(e) => updateTemplateItem(index, e.target.value)}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="Remove item"
-                      className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                      onClick={() => removeTemplateItem(index)}
-                    >
-                      <Trash2 />
-                    </Button>
+                {dailyTemplate ? (
+                  <div className="text-xs text-muted-foreground">
+                    {dailyTemplate.title && (
+                      <p className="font-medium text-foreground">
+                        {dailyTemplate.title}
+                      </p>
+                    )}
+                    {dailyTemplate.checklist.length > 0 && (
+                      <ul className="list-inside list-disc">
+                        {dailyTemplate.checklist.map((item, index) => (
+                          <li key={index}>{item}</li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
-                ))}
+                ) : (
+                  <p className="text-xs text-muted-foreground italic">
+                    No template yet
+                  </p>
+                )}
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   className="self-start"
-                  onClick={addTemplateItem}
+                  onClick={() => setTemplateDialogOpen(true)}
                 >
-                  <Plus /> Add item
+                  Edit template
                 </Button>
               </div>
             )}
@@ -190,6 +176,24 @@ export function CreateProjectDialog() {
           </DialogFooter>
         </form>
       </DialogContent>
+      <DailyTemplateDialog
+        open={templateDialogOpen}
+        onOpenChange={(next) => {
+          setTemplateDialogOpen(next);
+          if (!next) {
+            if (!savedTemplateRef.current && dailyTemplate === null) {
+              setDailyEnabled(false);
+            }
+            savedTemplateRef.current = false;
+          }
+        }}
+        projectName={name}
+        initialTemplate={dailyTemplate}
+        onSave={(template) => {
+          savedTemplateRef.current = true;
+          setDailyTemplate(template);
+        }}
+      />
     </Dialog>
   );
 }

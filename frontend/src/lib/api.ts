@@ -1,4 +1,11 @@
-import type { ChecklistItem, ColumnId, Project, Task, TasksByColumn } from "./types";
+import type {
+  ChecklistItem,
+  ColumnId,
+  DailyTemplate,
+  Project,
+  Task,
+  TasksByColumn,
+} from "./types";
 
 // Server-side only: Server Components and Server Actions proxy to FastAPI,
 // which is the single writer to Postgres. The browser never calls it directly.
@@ -26,13 +33,27 @@ export function toTask(t: ApiTask): Task {
   };
 }
 
+export interface ApiDailyTemplate {
+  title: string | null;
+  description: string | null;
+  checklist: string[];
+}
+
 export interface ApiProject {
   id: string;
   name: string;
   description: string | null;
   created_at: string;
   daily_enabled: boolean;
-  daily_template: string[];
+  daily_template: ApiDailyTemplate | null;
+}
+
+function toDailyTemplate(t: ApiDailyTemplate): DailyTemplate {
+  return {
+    title: t.title ?? undefined,
+    description: t.description ?? undefined,
+    checklist: t.checklist,
+  };
 }
 
 export function toProject(p: ApiProject): Project {
@@ -42,7 +63,7 @@ export function toProject(p: ApiProject): Project {
     description: p.description ?? undefined,
     createdAt: p.created_at,
     dailyEnabled: p.daily_enabled,
-    dailyTemplate: p.daily_template,
+    dailyTemplate: p.daily_template ? toDailyTemplate(p.daily_template) : null,
   };
 }
 

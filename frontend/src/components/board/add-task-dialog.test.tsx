@@ -20,7 +20,7 @@ const projects: Project[] = [
     name: "Alpha",
     createdAt: "2026-01-01T00:00:00Z",
     dailyEnabled: false,
-    dailyTemplate: [],
+    dailyTemplate: null,
   },
 ];
 
@@ -55,6 +55,7 @@ it("submits the trimmed title, chosen project, and selected column", async () =>
     title: "Write docs",
     description: undefined,
     projectId: "p1",
+    checklist: [],
   });
   expect(useBoardStore.getState().tasks.in_progress).toEqual([created]);
 });

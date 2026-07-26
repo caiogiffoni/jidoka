@@ -19,7 +19,7 @@ const project: Project = {
   name: "Alpha",
   createdAt: "2026-01-01T00:00:00Z",
   dailyEnabled: false,
-  dailyTemplate: [],
+  dailyTemplate: null,
 };
 
 beforeEach(() => {

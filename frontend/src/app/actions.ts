@@ -8,13 +8,29 @@ import {
   type ApiProject,
   type ApiTask,
 } from "@/lib/api";
-import type { ChecklistItem, ColumnId, Project, Task } from "@/lib/types";
+import type {
+  ChecklistItem,
+  ColumnId,
+  DailyTemplate,
+  Project,
+  Task,
+} from "@/lib/types";
+
+function dailyTemplateBody(template: DailyTemplate | null | undefined) {
+  if (!template) return null;
+  return {
+    title: template.title ?? null,
+    description: template.description ?? null,
+    checklist: template.checklist,
+  };
+}
 
 export async function createTask(input: {
   columnId: ColumnId;
   title: string;
   description?: string;
   projectId?: string;
+  checklist?: ChecklistItem[];
 }): Promise<Task> {
   const res = await fetch(`${BACKEND_URL}/tasks`, {
     method: "POST",
@@ -24,6 +40,7 @@ export async function createTask(input: {
       description: input.description ?? null,
       column_id: input.columnId,
       project_id: input.projectId ?? null,
+      checklist: input.checklist ?? [],
     }),
   });
   if (!res.ok) {
@@ -74,7 +91,7 @@ export async function createProject(input: {
   name: string;
   description?: string;
   dailyEnabled?: boolean;
-  dailyTemplate?: string[];
+  dailyTemplate?: DailyTemplate | null;
 }): Promise<Project> {
   const res = await fetch(`${BACKEND_URL}/projects`, {
     method: "POST",
@@ -83,7 +100,7 @@ export async function createProject(input: {
       name: input.name,
       description: input.description ?? null,
       daily_enabled: input.dailyEnabled ?? false,
-      daily_template: input.dailyTemplate ?? [],
+      daily_template: dailyTemplateBody(input.dailyTemplate),
     }),
   });
   if (!res.ok) {
@@ -106,7 +123,7 @@ export async function updateProject(input: {
   name: string;
   description?: string;
   dailyEnabled?: boolean;
-  dailyTemplate?: string[];
+  dailyTemplate?: DailyTemplate | null;
 }): Promise<Project> {
   const res = await fetch(
     `${BACKEND_URL}/projects/${encodeURIComponent(input.id)}`,
@@ -117,7 +134,7 @@ export async function updateProject(input: {
         name: input.name,
         description: input.description ?? null,
         daily_enabled: input.dailyEnabled ?? false,
-        daily_template: input.dailyTemplate ?? [],
+        daily_template: dailyTemplateBody(input.dailyTemplate),
       }),
     },
   );

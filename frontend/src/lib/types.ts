@@ -26,16 +26,27 @@ export interface Task {
   dueDate?: string;
 }
 
+// Drafted through a popup styled like the real "Add task" dialog (see
+// DailyTemplateDialog), but title/description/checklist are the only real
+// fields - that popup's Project/Column controls are display-only. `title`
+// is optional: the generated card is always named after the project and
+// date, with this appended - not a replacement for that name.
+export interface DailyTemplate {
+  title?: string;
+  description?: string;
+  checklist: string[];
+}
+
 export interface Project {
   id: string;
   name: string;
   description?: string;
   createdAt: string;
-  // Daily task generation: when enabled, each template line becomes a
-  // checklist item on a single card generated once per day (see
-  // generateDailyTasks in app/actions.ts).
+  // Daily task generation: when enabled, the template is cloned into a
+  // single card generated once per day (see generateDailyTasks in
+  // app/actions.ts). Null until a template has actually been saved.
   dailyEnabled: boolean;
-  dailyTemplate: string[];
+  dailyTemplate: DailyTemplate | null;
 }
 
 // Array order within a column is the display order; the backend persists it
