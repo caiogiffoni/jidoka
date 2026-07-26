@@ -31,6 +31,20 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
+def get_task_or_404(session: Session, task_id: uuid.UUID) -> Task:
+    task = session.get(Task, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="task not found")
+    return task
+
+
+def get_project_or_404(session: Session, project_id: uuid.UUID) -> Project:
+    project = session.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    return project
+
+
 @app.get("/health")
 def read_health():
     return {"ok": True}
@@ -49,8 +63,8 @@ def list_tasks(
 
 @app.post("/tasks", response_model=Task, status_code=201)
 def create_task(payload: TaskCreate, session: Session = Depends(get_session)):
-    if payload.project_id is not None and session.get(Project, payload.project_id) is None:
-        raise HTTPException(status_code=404, detail="project not found")
+    if payload.project_id is not None:
+        get_project_or_404(session, payload.project_id)
     next_position = session.exec(
         select(func.count())
         .select_from(Task)
@@ -69,11 +83,9 @@ def update_task(
     payload: TaskUpdate,
     session: Session = Depends(get_session),
 ):
-    task = session.get(Task, task_id)
-    if task is None:
-        raise HTTPException(status_code=404, detail="task not found")
-    if payload.project_id is not None and session.get(Project, payload.project_id) is None:
-        raise HTTPException(status_code=404, detail="project not found")
+    task = get_task_or_404(session, task_id)
+    if payload.project_id is not None:
+        get_project_or_404(session, payload.project_id)
     task.title = payload.title
     task.description = payload.description
     task.project_id = payload.project_id
@@ -95,15 +107,18 @@ def column_tasks(session: Session, column_id: str) -> list[Task]:
     )
 
 
+def reindex(tasks: list[Task]) -> None:
+    for index, t in enumerate(tasks):
+        t.position = index
+
+
 @app.patch("/tasks/{task_id}/move", response_model=Task)
 def move_task(
     task_id: uuid.UUID,
     payload: TaskMove,
     session: Session = Depends(get_session),
 ):
-    task = session.get(Task, task_id)
-    if task is None:
-        raise HTTPException(status_code=404, detail="task not found")
+    task = get_task_or_404(session, task_id)
 
     source = [t for t in column_tasks(session, task.column_id) if t.id != task.id]
     target = (
@@ -114,11 +129,8 @@ def move_task(
     target.insert(min(payload.position, len(target)), task)
     task.column_id = payload.column_id
 
-    # Reindex both affected columns so positions stay dense and ordered.
-    for index, t in enumerate(source):
-        t.position = index
-    for index, t in enumerate(target):
-        t.position = index
+    reindex(source)
+    reindex(target)
     session.add_all(source)
     session.add_all(target)
     session.commit()
@@ -132,17 +144,14 @@ def set_task_archived(
     payload: TaskArchive,
     session: Session = Depends(get_session),
 ):
-    task = session.get(Task, task_id)
-    if task is None:
-        raise HTTPException(status_code=404, detail="task not found")
+    task = get_task_or_404(session, task_id)
     if task.archived == payload.archived:
         return task
 
     if payload.archived:
         remaining = [t for t in column_tasks(session, task.column_id) if t.id != task.id]
         task.archived = True
-        for index, t in enumerate(remaining):
-            t.position = index
+        reindex(remaining)
         session.add_all(remaining)
     else:
         new_position = len(column_tasks(session, task.column_id))
@@ -178,9 +187,7 @@ def update_project(
     payload: ProjectUpdate,
     session: Session = Depends(get_session),
 ):
-    project = session.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="project not found")
+    project = get_project_or_404(session, project_id)
     project.name = payload.name
     project.description = payload.description
     project.daily_enabled = payload.daily_enabled
@@ -245,9 +252,7 @@ def generate_daily_tasks(session: Session = Depends(get_session)):
 
 @app.delete("/projects/{project_id}", status_code=204)
 def delete_project(project_id: uuid.UUID, session: Session = Depends(get_session)):
-    project = session.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="project not found")
+    project = get_project_or_404(session, project_id)
     session.delete(project)
     session.commit()
 
@@ -304,8 +309,7 @@ def create_work_block(
     payload: WorkBlockCreate,
     session: Session = Depends(get_session),
 ):
-    if session.get(Task, task_id) is None:
-        raise HTTPException(status_code=404, detail="task not found")
+    get_task_or_404(session, task_id)
     data = payload.model_dump()
     if data["minutes"] is None:
         duration = payload.ended_at - payload.started_at
@@ -319,8 +323,7 @@ def create_work_block(
 
 @app.get("/tasks/{task_id}/work-blocks", response_model=list[WorkBlock])
 def list_work_blocks(task_id: uuid.UUID, session: Session = Depends(get_session)):
-    if session.get(Task, task_id) is None:
-        raise HTTPException(status_code=404, detail="task not found")
+    get_task_or_404(session, task_id)
     return session.exec(
         select(WorkBlock)
         .where(WorkBlock.task_id == task_id)
@@ -330,13 +333,10 @@ def list_work_blocks(task_id: uuid.UUID, session: Session = Depends(get_session)
 
 @app.delete("/tasks/{task_id}", status_code=204)
 def delete_task(task_id: uuid.UUID, session: Session = Depends(get_session)):
-    task = session.get(Task, task_id)
-    if task is None:
-        raise HTTPException(status_code=404, detail="task not found")
+    task = get_task_or_404(session, task_id)
 
     remaining = [t for t in column_tasks(session, task.column_id) if t.id != task.id]
     session.delete(task)
-    for index, t in enumerate(remaining):
-        t.position = index
+    reindex(remaining)
     session.add_all(remaining)
     session.commit()
