@@ -4,9 +4,21 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChecklistItemEditor } from "./checklist-item-editor";
 
-function Wrapper({ initial = [] as string[] }) {
+function Wrapper({
+  initial = [] as string[],
+  itemPlaceholder,
+}: {
+  initial?: string[];
+  itemPlaceholder?: string;
+}) {
   const [items, setItems] = useState(initial);
-  return <ChecklistItemEditor items={items} onChange={setItems} />;
+  return (
+    <ChecklistItemEditor
+      items={items}
+      onChange={setItems}
+      itemPlaceholder={itemPlaceholder}
+    />
+  );
 }
 
 it("renders one input per item, prefilled with its text", () => {
@@ -51,16 +63,6 @@ it("removes a row when its remove button is clicked", async () => {
 });
 
 it("uses a custom placeholder when provided", () => {
-  function CustomWrapper() {
-    const [items, setItems] = useState<string[]>(["x"]);
-    return (
-      <ChecklistItemEditor
-        items={items}
-        onChange={setItems}
-        itemPlaceholder="Custom placeholder"
-      />
-    );
-  }
-  render(<CustomWrapper />);
+  render(<Wrapper initial={["x"]} itemPlaceholder="Custom placeholder" />);
   expect(screen.getByPlaceholderText("Custom placeholder")).toBeInTheDocument();
 });

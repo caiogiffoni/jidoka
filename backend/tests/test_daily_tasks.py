@@ -174,4 +174,8 @@ def test_b69_generate_daily_tasks_handles_multiple_due_projects(client):
 
     response = client.post("/projects/daily-tasks/generate")
     created = response.json()
-    assert {t["title"].split(" - ")[-1] for t in created} == {"Alpha", "Beta"}
+    today = datetime.now(timezone.utc).date()
+    assert {t["title"] for t in created} == {
+        f"Daily - {today:%d-%m-%y} - Alpha",
+        f"Daily - {today:%d-%m-%y} - Beta",
+    }
