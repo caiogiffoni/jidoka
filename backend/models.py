@@ -9,6 +9,31 @@ from sqlmodel import Field, SQLModel
 ColumnId = Literal["backlog", "todo", "in_progress", "done"]
 
 
+def _strip_blank_template_items(items: list[str]) -> list[str]:
+    return [item.strip() for item in items if item.strip()]
+
+
+class DailyTemplate(SQLModel):
+    """Drafted through a popup styled like the real "Add task" dialog, but
+    it never creates a task - Project/Column in that popup are display-only
+    (a template always lands in `todo` under its own project once
+    generated); only title/description/checklist are real. `title` is
+    optional - the generated card is always named after the project and
+    date; a title here is just appended to that, not a replacement for it.
+    """
+
+    title: str | None = None
+    description: str | None = None
+    checklist: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def clean(self) -> "DailyTemplate":
+        self.title = (self.title or "").strip() or None
+        self.description = (self.description or "").strip() or None
+        self.checklist = _strip_blank_template_items(self.checklist)
+        return self
+
+
 class Project(SQLModel, table=True):
     """A time-tracking bucket tasks can optionally link to.
 
@@ -26,23 +51,20 @@ class Project(SQLModel, table=True):
         default_factory=lambda: datetime.now(timezone.utc)
     )
     daily_enabled: bool = Field(default=False)
-    daily_template: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    daily_template: DailyTemplate | None = Field(default=None, sa_column=Column(JSON))
     daily_last_generated: str | None = Field(default=None)
-
-
-def _strip_blank_template_items(items: list[str]) -> list[str]:
-    return [item.strip() for item in items if item.strip()]
 
 
 class ProjectCreate(SQLModel):
     name: str
     description: str | None = None
     daily_enabled: bool = False
-    daily_template: list[str] = Field(default_factory=list)
+    daily_template: DailyTemplate | None = None
 
     @model_validator(mode="after")
-    def strip_blank_template_items(self) -> "ProjectCreate":
-        self.daily_template = _strip_blank_template_items(self.daily_template)
+    def validate_daily(self) -> "ProjectCreate":
+        if self.daily_enabled and self.daily_template is None:
+            raise ValueError("daily_enabled requires a daily_template")
         return self
 
 
@@ -50,11 +72,12 @@ class ProjectUpdate(SQLModel):
     name: str
     description: str | None = None
     daily_enabled: bool = False
-    daily_template: list[str] = Field(default_factory=list)
+    daily_template: DailyTemplate | None = None
 
     @model_validator(mode="after")
-    def strip_blank_template_items(self) -> "ProjectUpdate":
-        self.daily_template = _strip_blank_template_items(self.daily_template)
+    def validate_daily(self) -> "ProjectUpdate":
+        if self.daily_enabled and self.daily_template is None:
+            raise ValueError("daily_enabled requires a daily_template")
         return self
 
 

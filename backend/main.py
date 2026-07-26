@@ -157,12 +157,10 @@ def set_task_archived(
 
 @app.post("/projects", response_model=Project, status_code=201)
 def create_project(payload: ProjectCreate, session: Session = Depends(get_session)):
-    project = Project(
-        name=payload.name,
-        description=payload.description,
-        daily_enabled=payload.daily_enabled,
-        daily_template=payload.daily_template,
-    )
+    # model_dump() recursively converts daily_template into a plain dict (or
+    # None) so the JSON column can serialize it - a bare DailyTemplate
+    # instance isn't natively JSON-serializable.
+    project = Project(**payload.model_dump())
     session.add(project)
     session.commit()
     session.refresh(project)
@@ -186,7 +184,9 @@ def update_project(
     project.name = payload.name
     project.description = payload.description
     project.daily_enabled = payload.daily_enabled
-    project.daily_template = payload.daily_template
+    project.daily_template = (
+        payload.daily_template.model_dump() if payload.daily_template else None
+    )
     session.add(project)
     session.commit()
     session.refresh(project)
@@ -202,7 +202,7 @@ def generate_daily_tasks(session: Session = Depends(get_session)):
         for p in session.exec(
             select(Project).where(Project.daily_enabled.is_(True))
         ).all()
-        if p.daily_template and p.daily_last_generated != today_iso
+        if p.daily_template is not None and p.daily_last_generated != today_iso
     ]
     if not due:
         return []
@@ -215,12 +215,21 @@ def generate_daily_tasks(session: Session = Depends(get_session)):
 
     created: list[Task] = []
     for project in due:
+        # daily_template comes back from the JSON column as a plain dict,
+        # not a DailyTemplate instance - dict access, not attribute access.
+        template = project.daily_template
+        title = f"Daily - {today:%d-%m-%y} - {project.name}"
+        if template.get("title"):
+            title += f" - {template['title']}"
         task = Task(
-            title=f"Daily - {today:%d-%m-%y} - {project.name}",
+            title=title,
+            description=template.get("description"),
             column_id="todo",
             project_id=project.id,
             position=next_position,
-            checklist=[{"text": item, "checked": False} for item in project.daily_template],
+            checklist=[
+                {"text": item, "checked": False} for item in template["checklist"]
+            ],
         )
         next_position += 1
         project.daily_last_generated = today_iso
