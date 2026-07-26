@@ -7,6 +7,7 @@ The name comes from the Toyota principle _jidoka_: automation with a human touch
 ## What it does
 
 - **A real kanban board** - create, edit, and drag cards across columns by hand, like any Trello board. The agent is a layer on top, not the only way in.
+- **Backlog column + archiving** - a Backlog column sits before To Do for work that isn't queued yet, and any card can be archived (hidden from the board, not deleted) with the same confirm-free undo-toast safety net as delete.
 - **Card checklists** - any card can hold a Trello-style checklist, added at creation or afterward: check items off, add or remove them, and see progress (e.g. "2/4") right on the card face.
 - **Due dates** - set an optional due date on any card; overdue cards get a quiet red badge, both in the card dialog and on the card face.
 - **Markdown formatting toolbar** - bold, italic, lists, and links, one click each, on any description field.
@@ -15,7 +16,7 @@ The name comes from the Toyota principle _jidoka_: automation with a human touch
 - **Paste-to-tickets** - paste a syllabus or project brief and get structured task extraction, routed through the same propose → approve flow.
 - **Semantic search** over cards via pgvector embeddings.
 - **Time tracking** - start a pomodoro-style work block from any card to see how long each task actually took. Tasks optionally link to a project, and a dashboard rolls time up per project with a 7-day stacked-bar chart.
-- **Daily project tasks** - opt a project into a checklist template (e.g. "post a standup message", "check the latest agent run") at creation or later; a `Daily - DD-MM-YY - <project>` card with that checklist is generated automatically once a day for every opted-in project.
+- **Daily project tasks** - opt a project into a daily template - an optional title, description, and checklist, drafted in a popup that looks just like creating a real task - at creation or later; a fresh card cloned from that template is generated automatically once a day for every opted-in project, named after the project and date.
 - **Traced and evaluated** - Langfuse tracing on every agent run, plus a pytest eval suite asserting correct tool selection and arguments. _(Results will be published here.)_
 
 ## Stack
@@ -41,9 +42,10 @@ Current (SQLModel, in `backend/models.py`):
 | `id`          | UUID                       | primary key                                       |
 | `title`       | str                        |                                                    |
 | `description` | str \| None                |                                                    |
-| `column_id`   | str                        | `todo` \| `in_progress` \| `done`, indexed        |
+| `column_id`   | str                        | `backlog` \| `todo` \| `in_progress` \| `done`, indexed |
 | `project_id`  | UUID \| None               | FK → `projects.id`, `ON DELETE SET NULL`, indexed |
 | `position`    | int                        | display order within the column, kept dense       |
+| `archived`    | bool                       | default `false`, indexed; excluded from `GET /tasks` unless `?include_archived=true` |
 | `checklist`   | list[{text, checked}]      | JSON column; a Trello-style checklist on the card |
 | `due_date`    | date \| None                | optional; overdue → red badge (not `done`)        |
 | `created_at`  | datetime                   | UTC                                               |
@@ -67,13 +69,15 @@ Current (SQLModel, in `backend/models.py`):
 | `name`                  | str           |                                                                     |
 | `description`           | str \| None   | optional, rendered as Markdown                                     |
 | `created_at`            | datetime      | UTC                                                                 |
-| `daily_enabled`         | bool          | default `false` - opts the project into daily task generation      |
-| `daily_template`        | list[str]     | JSON column; each line becomes a `- [ ]` checklist item on the card |
-| `daily_last_generated`  | str \| None   | UTC `YYYY-MM-DD`; guards against generating twice in the same day  |
+| `daily_enabled`         | bool                                | default `false` - opts the project into daily task generation |
+| `daily_template`        | {title, description, checklist} \| None | JSON column; cloned into a real card once a day - `None` until drafted |
+| `daily_last_generated`  | str \| None                         | UTC `YYYY-MM-DD`; guards against generating twice in the same day |
 
 ## Status
 
 The base kanban is built and usable by hand: create, edit, and delete cards (confirm dialog + undo toast), drag them across columns with pointer or keyboard (with screen-reader announcements). Mutations are optimistic with rollback and error toasts; the frontend persists through Server Actions to FastAPI, the single writer to Postgres.
+
+A Backlog column sits before To Do, with a neutral gray status dot rather than a fourth andon color - it marks work that isn't queued yet, not a stage of work in progress. Any card can also be archived instead of deleted, from an icon in its detail dialog: it disappears from the board immediately behind the same undo-toast pattern as delete, but there's deliberately no confirm dialog (archiving isn't destructive) and no UI yet to browse or restore archived cards once the toast closes.
 
 Any card can carry a checklist - drafted right in the "Add task" form, or added later from the task detail dialog's view mode with no need to enter edit mode first. Check an item, add one, or remove one and it saves immediately (optimistic, with rollback and a toast if the save fails); the board card face shows a quiet progress count (e.g. "2/4") whenever a card has one.
 
@@ -83,7 +87,7 @@ A pomodoro timer lives in the board header: the classic work / break / long-brea
 
 A projects + weekly time dashboard lives at `/` (the kanban board moved to `/board`): create projects, each with an optional Markdown description, and see the last 7 days of focus time as a stacked bar chart broken down by day and by project, with a "Not defined" bucket for tasks with no project. Each project row also shows its linked tasks' counts by board column (To Do / In Progress / Done). A task can link to a project at creation via the "Add task" dialog, or be reassigned later from the task detail dialog's edit mode. That dialog also renders a task's description as Markdown, shows the project it's linked to and the total time logged against it, and supports manual minutes entry independent of the pomodoro timer.
 
-Any project can opt into daily tasks via a "Generate a daily task" checkbox, available both when creating the project and later from its edit dialog. Checking it opens a small popup - styled like drafting a task - where you build the checklist template; it saves back into the project's own form rather than the board, so nothing shows up immediately. Once a day, a `Daily - DD-MM-YY - <project>` card is generated in To Do with that checklist (the same kind described above), for every opted-in project - idempotent per UTC day, so it's safe to trigger more than once. There's no real login system yet, so "once a day" is approximated client-side (fires on first app load per browser-local day) rather than tied to an actual sign-in event; that will move to the real login/session-start event once auth ships.
+Any project can opt into daily tasks via a "Generate a daily task" checkbox, available both when creating the project and later from its edit dialog. Checking it opens a popup that looks just like the real "Add task" dialog - Title, Description, Checklist, even Project and Column shown for visual consistency, though the latter two are fixed (a generated card always belongs to this project and always lands in To Do). Title is optional too: the generated card is always named "Daily - DD-MM-YY - \<project\>", with the template's title appended only if you gave it one, not replacing it. "Save template" saves it back into the project's own form rather than the board, so nothing shows up immediately. Once a day, that named card is generated in To Do with the template's description and checklist, for every opted-in project - idempotent per UTC day, so it's safe to trigger more than once. There's no real login system yet, so "once a day" is approximated client-side (fires on first app load per browser-local day) rather than tied to an actual sign-in event; that will move to the real login/session-start event once auth ships.
 
 The agent, HITL approval flow, and semantic search are next, in that order.
 

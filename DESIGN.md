@@ -122,6 +122,8 @@ The andon lights - column status colors, applied only as the 6px status dot in e
 - **Andon Amber** (oklch(0.769 0.188 70.08)): In progress - the line is running.
 - **Andon Emerald** (oklch(0.696 0.17 162.48)): Done - the station cleared.
 
+Backlog, the column before To Do, isn't a station on the line yet - its dot is **Gray Voice** (neutral, see below), not a fourth andon hue. It marks "not queued" rather than a stage of work in progress.
+
 ### Neutral
 
 - **Paper White** (oklch(1 0 0)): body and card background in light theme.
