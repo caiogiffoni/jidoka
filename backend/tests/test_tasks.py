@@ -26,7 +26,11 @@ def test_b4_create_task_rejects_bogus_column(client):
 
 
 def test_b5_list_tasks_ordering(client):
-    """TESTING.md B5: ordered by column_id, then position, then created_at."""
+    """TESTING.md B5: ordered by column_id, then position, then created_at.
+
+    Checks relative order (not exact list equality) so this passes against a
+    dev DB that already has other tasks in it, not just an empty one.
+    """
     done = client.post("/tasks", json={"title": "Done task", "column_id": "done"}).json()
     in_progress = client.post(
         "/tasks", json={"title": "In-progress task", "column_id": "in_progress"}
@@ -34,9 +38,10 @@ def test_b5_list_tasks_ordering(client):
     todo_1 = client.post("/tasks", json={"title": "Todo 1"}).json()
     todo_2 = client.post("/tasks", json={"title": "Todo 2"}).json()
 
-    tasks = client.get("/tasks").json()
-    ids = [t["id"] for t in tasks]
-    assert ids == [done["id"], in_progress["id"], todo_1["id"], todo_2["id"]]
+    ids = [t["id"] for t in client.get("/tasks").json()]
+    assert ids.index(done["id"]) < ids.index(in_progress["id"])
+    assert ids.index(in_progress["id"]) < ids.index(todo_1["id"])
+    assert ids.index(todo_1["id"]) < ids.index(todo_2["id"])
 
 
 def test_b6_move_task_reindexes_source_column(client):

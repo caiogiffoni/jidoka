@@ -24,13 +24,16 @@ def test_b13_create_project_requires_name(client):
 
 
 def test_b14_list_projects_ordered_by_created_at(client):
-    """TESTING.md B14: GET /projects returns both, ordered by created_at ascending."""
+    """TESTING.md B14: GET /projects returns both, ordered by created_at ascending.
+
+    Checks relative order (not exact list equality) so this passes against a
+    dev DB that already has other projects in it, not just an empty one.
+    """
     alpha = client.post("/projects", json={"name": "Alpha"}).json()
     beta = client.post("/projects", json={"name": "Beta"}).json()
 
-    projects = client.get("/projects").json()
-    ids = [p["id"] for p in projects]
-    assert ids == [alpha["id"], beta["id"]]
+    ids = [p["id"] for p in client.get("/projects").json()]
+    assert ids.index(alpha["id"]) < ids.index(beta["id"])
 
 
 def test_b31_create_project_with_description(client):
