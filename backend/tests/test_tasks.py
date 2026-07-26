@@ -180,3 +180,89 @@ def test_b46_create_task_accepts_backlog_column(client):
     tasks = client.get("/tasks").json()
     ids = [t["id"] for t in tasks]
     assert ids.index(backlog.json()["id"]) < ids.index(todo["id"])
+
+
+def test_b53_create_task_with_checklist_defaults_unchecked(client):
+    """TESTING.md B53: POST /tasks accepts a checklist; items default checked=false."""
+    response = client.post(
+        "/tasks",
+        json={"title": "x", "checklist": [{"text": "Item one"}, {"text": "Item two"}]},
+    )
+    assert response.status_code == 201
+    assert response.json()["checklist"] == [
+        {"text": "Item one", "checked": False},
+        {"text": "Item two", "checked": False},
+    ]
+
+
+def test_b54_create_task_strips_blank_checklist_items(client):
+    """TESTING.md B54: blank/whitespace-only checklist item text is dropped on create."""
+    response = client.post(
+        "/tasks",
+        json={"title": "x", "checklist": [{"text": "  Keep me  "}, {"text": "   "}]},
+    )
+    assert response.status_code == 201
+    assert response.json()["checklist"] == [{"text": "Keep me", "checked": False}]
+
+
+def test_b55_update_task_replaces_checklist(client):
+    """TESTING.md B55: PATCH /tasks/{id} replaces the checklist (full replace)."""
+    task = client.post(
+        "/tasks", json={"title": "x", "checklist": [{"text": "Old"}]}
+    ).json()
+
+    response = client.patch(
+        f"/tasks/{task['id']}",
+        json={
+            "title": "x",
+            "checklist": [{"text": "New", "checked": True}],
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["checklist"] == [{"text": "New", "checked": True}]
+
+
+def test_b56_update_task_omitting_checklist_wipes_it(client):
+    """TESTING.md B56: full-replace PATCH clears an existing checklist if the caller omits it."""
+    task = client.post(
+        "/tasks", json={"title": "x", "checklist": [{"text": "Will vanish"}]}
+    ).json()
+
+    response = client.patch(f"/tasks/{task['id']}", json={"title": "x"})
+    assert response.status_code == 200
+    assert response.json()["checklist"] == []
+
+
+def test_b57_create_task_has_no_due_date_and_update_sets_it(client):
+    """TESTING.md B57: due_date isn't settable at creation (TaskCreate has no such
+    field); PATCH /tasks/{id} is what sets it, and it round-trips unchanged."""
+    created = client.post("/tasks", json={"title": "x"})
+    assert created.status_code == 201
+    assert created.json()["due_date"] is None
+
+    updated = client.patch(
+        f"/tasks/{created.json()['id']}",
+        json={"title": "x", "due_date": "2026-09-15"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["due_date"] == "2026-09-15"
+
+
+def test_b58_update_task_omitting_due_date_clears_it(client):
+    """TESTING.md B58: full-replace PATCH clears an existing due_date if the caller omits it."""
+    task = client.post(
+        "/tasks", json={"title": "x", "due_date": "2026-08-01"}
+    ).json()
+
+    response = client.patch(f"/tasks/{task['id']}", json={"title": "x"})
+    assert response.status_code == 200
+    assert response.json()["due_date"] is None
+
+
+def test_b59_update_task_rejects_bogus_due_date(client):
+    """TESTING.md B59: an unparseable due_date is a 422, not a 500."""
+    task = client.post("/tasks", json={"title": "x"}).json()
+    response = client.patch(
+        f"/tasks/{task['id']}", json={"title": "x", "due_date": "not-a-date"}
+    )
+    assert response.status_code == 422
