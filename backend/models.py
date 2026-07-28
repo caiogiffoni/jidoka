@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime, timezone
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import field_serializer, model_validator
 from sqlalchemy import JSON, Column
 from sqlmodel import Field, SQLModel
 
@@ -53,6 +53,19 @@ class Project(SQLModel, table=True):
     daily_enabled: bool = Field(default=False)
     daily_template: DailyTemplate | None = Field(default=None, sa_column=Column(JSON))
     daily_last_generated: str | None = Field(default=None)
+
+    @field_serializer("daily_template")
+    def serialize_daily_template(
+        self, template: DailyTemplate | dict | None
+    ) -> dict | None:
+        # The JSON column returns a plain dict; model instances arrive when the
+        # field is constructed from a Pydantic payload. Normalize to dicts so
+        # response serialization never warns about an unexpected type.
+        if template is None:
+            return None
+        if isinstance(template, DailyTemplate):
+            return template.model_dump()
+        return template
 
 
 class ProjectCreate(SQLModel):
@@ -117,6 +130,18 @@ class Task(SQLModel, table=True):
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
+
+    @field_serializer("checklist")
+    def serialize_checklist(
+        self, checklist: list[ChecklistItem] | list[dict]
+    ) -> list[dict]:
+        # The JSON column returns plain dicts; model instances arrive when the
+        # field is constructed from a Pydantic payload. Normalize to dicts so
+        # response serialization never warns about an unexpected type.
+        return [
+            item.model_dump() if isinstance(item, ChecklistItem) else item
+            for item in checklist
+        ]
 
 
 def _strip_blank_checklist_items(items: list[ChecklistItem]) -> list[ChecklistItem]:
