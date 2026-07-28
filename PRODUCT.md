@@ -12,7 +12,7 @@ web
 
 Primary: Caio, running his own work on the board every day - planning tasks, dragging cards, chatting with the agent, tracking time. The design must survive real daily use, not just a staged demo.
 
-Secondary: public users, in a later phase. Jidoka opens to registered users, and a no-signup demo space lets anyone - first-time visitors, interviewers, hiring engineers - try the board and the agent without creating an account. These visitors spend 2–10 minutes in the demo before deciding to register (or to keep reading the repo). When a design decision conflicts between the two audiences, pick what reads best in that short first-touch session - the unregistered demo visitor is the tiebreaker.
+Secondary: public users, in a later phase. Jidoka opens to registered users, and a no-signup demo space lets anyone - first-time visitors, interviewers, hiring engineers - try the board and the agent without creating an account. These visitors spend 2-10 minutes in the demo before deciding to register (or to keep reading the repo). When a design decision conflicts between the two audiences, pick what reads best in that short first-touch session - the unregistered demo visitor is the tiebreaker.
 
 ## Product Purpose
 

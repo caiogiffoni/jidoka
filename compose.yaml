@@ -24,6 +24,7 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql+psycopg://jidoka:jidoka@db:5432/jidoka
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-secret-for-local}
     depends_on:
       db:
         condition: service_healthy

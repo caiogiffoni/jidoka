@@ -1,10 +1,13 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { register, type AuthActionState } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+
+const USERNAME_PATTERN = "^[a-zA-Z][a-zA-Z0-9_-]{2,29}$";
+const PASSWORD_PATTERN = "^(?=.*[^A-Za-z0-9\\s]).{8,}$";
 
 export function RegisterForm() {
   const [state, formAction, isPending] = useActionState<
@@ -12,8 +15,31 @@ export function RegisterForm() {
     FormData
   >(register, null);
 
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const passwordsMatch =
+    confirmPassword === "" || password === confirmPassword;
+
   return (
     <form action={formAction} className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1.5">
+        <label
+          htmlFor="register-username"
+          className="text-xs font-medium text-muted-foreground"
+        >
+          Username
+        </label>
+        <Input
+          id="register-username"
+          name="username"
+          type="text"
+          autoComplete="username"
+          placeholder="johndoe"
+          required
+          pattern={USERNAME_PATTERN}
+          title="3-30 characters, must start with a letter, letters/numbers/_/- only"
+        />
+      </div>
       <div className="flex flex-col gap-1.5">
         <label
           htmlFor="register-email"
@@ -45,6 +71,10 @@ export function RegisterForm() {
           placeholder="••••••••"
           required
           minLength={8}
+          pattern={PASSWORD_PATTERN}
+          title="At least 8 characters and one special character"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
         />
       </div>
       <div className="flex flex-col gap-1.5">
@@ -62,7 +92,13 @@ export function RegisterForm() {
           placeholder="••••••••"
           required
           minLength={8}
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          aria-invalid={!passwordsMatch}
         />
+        {!passwordsMatch && (
+          <p className="text-xs text-destructive">Passwords do not match.</p>
+        )}
       </div>
       {state && (
         <p
@@ -78,7 +114,11 @@ export function RegisterForm() {
           {state.message}
         </p>
       )}
-      <Button type="submit" disabled={isPending} className="w-full">
+      <Button
+        type="submit"
+        disabled={isPending || !passwordsMatch}
+        className="w-full"
+      >
         {isPending ? "Creating account…" : "Create account"}
       </Button>
     </form>

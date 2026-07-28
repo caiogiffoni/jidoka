@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this project is
 
-**Jidoka** - a Trello-style kanban board operated by an LLM agent with human-in-the-loop approval (the name is the Toyota principle: automation with a human touch). Portfolio project targeting Python AI-agent roles; scope is ~3–4 focused weeks. The interview narrative is "kanban agent with HITL approval, tracing, and evals."
+**Jidoka** - a Trello-style kanban board operated by an LLM agent with human-in-the-loop approval (the name is the Toyota principle: automation with a human touch). Portfolio project targeting Python AI-agent roles; scope is ~3-4 focused weeks. The interview narrative is "kanban agent with HITL approval, tracing, and evals."
 
 Source material lives in `temp/`: `PROJETO 18.pdf` is the original 2023 spec (Trello + IA; Appwrite, GPT-3.5, react-beautiful-dnd - **all outdated, do not follow it for stack choices**) and `compact.md` is the modernized spec that governs. The PDF is still useful for the wireframe and base data model (columns todo/in-progress/done, card fields, search).
 
@@ -124,3 +124,10 @@ Strategic and visual design context is captured in two root files - read them be
 
 - `PRODUCT.md` - register (product), platform (web), audiences (Caio daily-use primary; public users secondary via a no-signup demo space, demo visitor tiebreaks), positioning ("Agent proposes, you decide"), design principles, anti-references (Jira chrome, AI-chatbot-first UI), WCAG 2.1 AA commitment.
 - `DESIGN.md` - the visual system ("The Andon Line"): Electric Violet as the sole action/agent accent, andon status tints per column, flat-until-touched elevation, Geist/Geist Mono type roles, named rules and do's/don'ts.
+
+## Git workflow
+
+- **Never commit on the user's behalf.** The user always commits manually. Do not
+  run `git commit`, `git push`, `git reset`, `git rebase`, or any other git
+  mutation unless explicitly asked. Inspecting status/diff to help the user
+  understand what changed is fine.
