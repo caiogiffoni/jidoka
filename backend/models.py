@@ -1,8 +1,10 @@
+import re
 import uuid
 from datetime import date, datetime, timezone
 from typing import Literal
 
-from pydantic import field_serializer, model_validator
+from blocked_usernames import PROFANE_USERNAMES
+from pydantic import EmailStr, field_serializer, model_validator
 from sqlalchemy import JSON, Column
 from sqlmodel import Field, SQLModel
 
@@ -34,6 +36,71 @@ class DailyTemplate(SQLModel):
         return self
 
 
+_USERNAME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]{2,29}$")
+_PASSWORD_SPECIAL_RE = re.compile(r"[^A-Za-z0-9\s]")
+
+
+def _validate_username(value: str) -> str:
+    value = value.strip()
+    if not _USERNAME_RE.match(value):
+        raise ValueError(
+            "username must be 3-30 characters, start with a letter, "
+            "and contain only letters, numbers, underscores, or hyphens"
+        )
+    if value.lower() in PROFANE_USERNAMES:
+        raise ValueError("username contains a reserved or inappropriate word")
+    return value
+
+
+def _validate_password(value: str) -> str:
+    if len(value) < 8:
+        raise ValueError("password must be at least 8 characters")
+    if not _PASSWORD_SPECIAL_RE.search(value):
+        raise ValueError("password must contain at least one special character")
+    return value
+
+
+class User(SQLModel, table=True):
+    __tablename__ = "users"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    email: EmailStr = Field(unique=True, index=True)
+    username: str = Field(unique=True, index=True)
+    hashed_password: str
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+
+
+class UserCreate(SQLModel):
+    email: EmailStr
+    username: str
+    password: str
+
+    @model_validator(mode="after")
+    def validate(self) -> "UserCreate":
+        self.username = _validate_username(self.username)
+        self.password = _validate_password(self.password)
+        return self
+
+
+class UserLogin(SQLModel):
+    email: EmailStr
+    password: str
+
+
+class UserPublic(SQLModel):
+    id: uuid.UUID
+    email: str
+    username: str
+    created_at: datetime
+
+
+class AuthResponse(SQLModel):
+    user: UserPublic
+    token: str
+
+
 class Project(SQLModel, table=True):
     """A time-tracking bucket tasks can optionally link to.
 
@@ -45,6 +112,9 @@ class Project(SQLModel, table=True):
     __tablename__ = "projects"
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: uuid.UUID | None = Field(
+        default=None, foreign_key="users.id", ondelete="CASCADE", index=True
+    )
     name: str
     description: str | None = None
     created_at: datetime = Field(
