@@ -9,7 +9,9 @@ import db
 import main
 from models import User
 
-os.environ.setdefault("JWT_SECRET_KEY", "test-secret-for-pytest")
+os.environ.setdefault(
+    "JWT_SECRET_KEY", "test-secret-for-pytest-must-be-at-least-32-bytes-long"
+)
 
 
 @pytest.fixture()
