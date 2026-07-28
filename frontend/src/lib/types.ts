@@ -53,3 +53,10 @@ export interface Project {
 // Array order within a column is the display order; the backend persists it
 // as a `position` field per task.
 export type TasksByColumn = Record<ColumnId, Task[]>;
+
+export interface User {
+  id: string;
+  email: string;
+  username: string;
+  createdAt: string;
+}

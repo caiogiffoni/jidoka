@@ -1,3 +1,5 @@
+import { cookies } from "next/headers";
+
 import type {
   ChecklistItem,
   ColumnId,
@@ -10,6 +12,15 @@ import type {
 // Server-side only: Server Components and Server Actions proxy to FastAPI,
 // which is the single writer to Postgres. The browser never calls it directly.
 export const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+
+export const AUTH_COOKIE = "jidoka_session";
+
+export async function authHeaders(): Promise<Record<string, string>> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(AUTH_COOKIE)?.value;
+  if (!token) return {};
+  return { Authorization: `Bearer ${token}` };
+}
 
 export interface ApiTask {
   id: string;
@@ -71,7 +82,10 @@ export function toProject(p: ApiProject): Project {
 
 export async function fetchProjects(): Promise<Project[]> {
   try {
-    const res = await fetch(`${BACKEND_URL}/projects`, { cache: "no-store" });
+    const res = await fetch(`${BACKEND_URL}/projects`, {
+      cache: "no-store",
+      headers: await authHeaders(),
+    });
     if (!res.ok) throw new Error(`GET /projects failed: ${res.status}`);
     const apiProjects: ApiProject[] = await res.json();
     return apiProjects.map(toProject);
@@ -94,7 +108,7 @@ export async function fetchDailyStats(
   try {
     const res = await fetch(
       `${BACKEND_URL}/work-blocks/stats/daily?days=${days}`,
-      { cache: "no-store" },
+      { cache: "no-store", headers: await authHeaders() },
     );
     if (!res.ok) {
       throw new Error(`GET /work-blocks/stats/daily failed: ${res.status}`);
@@ -116,7 +130,10 @@ export async function fetchTasksByColumn(): Promise<TasksByColumn> {
 
   let apiTasks: ApiTask[];
   try {
-    const res = await fetch(`${BACKEND_URL}/tasks`, { cache: "no-store" });
+    const res = await fetch(`${BACKEND_URL}/tasks`, {
+      cache: "no-store",
+      headers: await authHeaders(),
+    });
     if (!res.ok) throw new Error(`GET /tasks failed: ${res.status}`);
     apiTasks = await res.json();
   } catch (error) {
