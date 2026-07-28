@@ -1,9 +1,15 @@
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
+import auth
 import db
 import main
+from models import User
+
+os.environ.setdefault("JWT_SECRET_KEY", "test-secret-for-pytest")
 
 
 @pytest.fixture()
@@ -26,8 +32,21 @@ def session():
 
 
 @pytest.fixture()
-def client(session):
+def test_user(session):
+    user = User(
+        email="test@example.com",
+        username="testuser",
+        hashed_password=auth._hash_password("password"),
+    )
+    session.add(user)
+    session.flush()
+    return user
+
+
+@pytest.fixture()
+def client(session, test_user):
     main.app.dependency_overrides[db.get_session] = lambda: session
+    main.app.dependency_overrides[auth.get_current_user] = lambda: test_user
     with TestClient(main.app) as test_client:
         yield test_client
     main.app.dependency_overrides.clear()

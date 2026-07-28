@@ -2,10 +2,10 @@ import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import bcrypt
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from passlib.context import CryptContext
 from sqlmodel import Session, select
 
 from blocked_usernames import PROFANE_USERNAMES
@@ -25,17 +25,16 @@ def _jwt_secret() -> str:
     return secret
 
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 def _hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def _verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
 
 
 def _create_token(user: User) -> str:

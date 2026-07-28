@@ -112,12 +112,7 @@ class Project(SQLModel, table=True):
     __tablename__ = "projects"
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    # Nullable during the auth rollout so existing projects don't break until
-    # the project endpoints require authentication. Step 4 will purge the DB and
-    # make this column non-nullable. -- delete this them
-    user_id: uuid.UUID | None = Field(
-        default=None, foreign_key="users.id", ondelete="CASCADE", index=True
-    )
+    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
     name: str
     description: str | None = None
     created_at: datetime = Field(
@@ -185,6 +180,7 @@ class Task(SQLModel, table=True):
     __tablename__ = "tasks"
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
     title: str
     description: str | None = None
     column_id: str = Field(index=True)

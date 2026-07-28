@@ -1,3 +1,4 @@
+import os
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, time, timedelta, timezone
@@ -6,6 +7,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from sqlalchemy import func
 from sqlmodel import Session, select
 
+import auth
 from db import create_db_and_tables, get_session
 from models import (
     DailyProjectStat,
@@ -17,6 +19,7 @@ from models import (
     TaskCreate,
     TaskMove,
     TaskUpdate,
+    User,
     WorkBlock,
     WorkBlockCreate,
 )
@@ -24,23 +27,30 @@ from models import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if not os.environ.get("JWT_SECRET_KEY"):
+        raise RuntimeError("JWT_SECRET_KEY environment variable is not set")
     create_db_and_tables()
     yield
 
 
 app = FastAPI(lifespan=lifespan)
+app.include_router(auth.router)
 
 
-def get_task_or_404(session: Session, task_id: uuid.UUID) -> Task:
+def get_task_or_404(
+    session: Session, task_id: uuid.UUID, user_id: uuid.UUID | None = None
+) -> Task:
     task = session.get(Task, task_id)
-    if task is None:
+    if task is None or (user_id is not None and task.user_id != user_id):
         raise HTTPException(status_code=404, detail="task not found")
     return task
 
 
-def get_project_or_404(session: Session, project_id: uuid.UUID) -> Project:
+def get_project_or_404(
+    session: Session, project_id: uuid.UUID, user_id: uuid.UUID | None = None
+) -> Project:
     project = session.get(Project, project_id)
-    if project is None:
+    if project is None or (user_id is not None and project.user_id != user_id):
         raise HTTPException(status_code=404, detail="project not found")
     return project
 
@@ -53,24 +63,39 @@ def read_health():
 @app.get("/tasks", response_model=list[Task])
 def list_tasks(
     include_archived: bool = Query(default=False),
+    current_user: User = Depends(auth.get_current_user),
     session: Session = Depends(get_session),
 ):
-    query = select(Task).order_by(Task.column_id, Task.position, Task.created_at)
+    query = (
+        select(Task)
+        .where(Task.user_id == current_user.id)
+        .order_by(Task.column_id, Task.position, Task.created_at)
+    )
     if not include_archived:
         query = query.where(Task.archived.is_(False))
     return session.exec(query).all()
 
 
 @app.post("/tasks", response_model=Task, status_code=201)
-def create_task(payload: TaskCreate, session: Session = Depends(get_session)):
+def create_task(
+    payload: TaskCreate,
+    current_user: User = Depends(auth.get_current_user),
+    session: Session = Depends(get_session),
+):
     if payload.project_id is not None:
-        get_project_or_404(session, payload.project_id)
+        get_project_or_404(session, payload.project_id, current_user.id)
     next_position = session.exec(
         select(func.count())
         .select_from(Task)
-        .where(Task.column_id == payload.column_id, Task.archived.is_(False))
+        .where(
+            Task.column_id == payload.column_id,
+            Task.archived.is_(False),
+            Task.user_id == current_user.id,
+        )
     ).one()
-    task = Task(**payload.model_dump(), position=next_position)
+    task = Task(
+        **payload.model_dump(), user_id=current_user.id, position=next_position
+    )
     session.add(task)
     session.commit()
     session.refresh(task)
@@ -81,11 +106,12 @@ def create_task(payload: TaskCreate, session: Session = Depends(get_session)):
 def update_task(
     task_id: uuid.UUID,
     payload: TaskUpdate,
+    current_user: User = Depends(auth.get_current_user),
     session: Session = Depends(get_session),
 ):
-    task = get_task_or_404(session, task_id)
+    task = get_task_or_404(session, task_id, current_user.id)
     if payload.project_id is not None:
-        get_project_or_404(session, payload.project_id)
+        get_project_or_404(session, payload.project_id, current_user.id)
     task.title = payload.title
     task.description = payload.description
     task.project_id = payload.project_id
@@ -97,11 +123,15 @@ def update_task(
     return task
 
 
-def column_tasks(session: Session, column_id: str) -> list[Task]:
+def column_tasks(session: Session, column_id: str, user_id: uuid.UUID) -> list[Task]:
     return list(
         session.exec(
             select(Task)
-            .where(Task.column_id == column_id, Task.archived.is_(False))
+            .where(
+                Task.column_id == column_id,
+                Task.archived.is_(False),
+                Task.user_id == user_id,
+            )
             .order_by(Task.position, Task.created_at)
         ).all()
     )
@@ -116,15 +146,20 @@ def reindex(tasks: list[Task]) -> None:
 def move_task(
     task_id: uuid.UUID,
     payload: TaskMove,
+    current_user: User = Depends(auth.get_current_user),
     session: Session = Depends(get_session),
 ):
-    task = get_task_or_404(session, task_id)
+    task = get_task_or_404(session, task_id, current_user.id)
 
-    source = [t for t in column_tasks(session, task.column_id) if t.id != task.id]
+    source = [
+        t
+        for t in column_tasks(session, task.column_id, current_user.id)
+        if t.id != task.id
+    ]
     target = (
         source
         if payload.column_id == task.column_id
-        else column_tasks(session, payload.column_id)
+        else column_tasks(session, payload.column_id, current_user.id)
     )
     target.insert(min(payload.position, len(target)), task)
     task.column_id = payload.column_id
@@ -142,19 +177,24 @@ def move_task(
 def set_task_archived(
     task_id: uuid.UUID,
     payload: TaskArchive,
+    current_user: User = Depends(auth.get_current_user),
     session: Session = Depends(get_session),
 ):
-    task = get_task_or_404(session, task_id)
+    task = get_task_or_404(session, task_id, current_user.id)
     if task.archived == payload.archived:
         return task
 
     if payload.archived:
-        remaining = [t for t in column_tasks(session, task.column_id) if t.id != task.id]
+        remaining = [
+            t
+            for t in column_tasks(session, task.column_id, current_user.id)
+            if t.id != task.id
+        ]
         task.archived = True
         reindex(remaining)
         session.add_all(remaining)
     else:
-        new_position = len(column_tasks(session, task.column_id))
+        new_position = len(column_tasks(session, task.column_id, current_user.id))
         task.archived = False
         task.position = new_position
 
@@ -165,11 +205,15 @@ def set_task_archived(
 
 
 @app.post("/projects", response_model=Project, status_code=201)
-def create_project(payload: ProjectCreate, session: Session = Depends(get_session)):
+def create_project(
+    payload: ProjectCreate,
+    current_user: User = Depends(auth.get_current_user),
+    session: Session = Depends(get_session),
+):
     # model_dump() recursively converts daily_template into a plain dict (or
     # None) so the JSON column can serialize it - a bare DailyTemplate
     # instance isn't natively JSON-serializable.
-    project = Project(**payload.model_dump())
+    project = Project(**payload.model_dump(), user_id=current_user.id)
     session.add(project)
     session.commit()
     session.refresh(project)
@@ -177,17 +221,25 @@ def create_project(payload: ProjectCreate, session: Session = Depends(get_sessio
 
 
 @app.get("/projects", response_model=list[Project])
-def list_projects(session: Session = Depends(get_session)):
-    return session.exec(select(Project).order_by(Project.created_at)).all()
+def list_projects(
+    current_user: User = Depends(auth.get_current_user),
+    session: Session = Depends(get_session),
+):
+    return session.exec(
+        select(Project)
+        .where(Project.user_id == current_user.id)
+        .order_by(Project.created_at)
+    ).all()
 
 
 @app.patch("/projects/{project_id}", response_model=Project)
 def update_project(
     project_id: uuid.UUID,
     payload: ProjectUpdate,
+    current_user: User = Depends(auth.get_current_user),
     session: Session = Depends(get_session),
 ):
-    project = get_project_or_404(session, project_id)
+    project = get_project_or_404(session, project_id, current_user.id)
     project.name = payload.name
     project.description = payload.description
     project.daily_enabled = payload.daily_enabled
@@ -201,13 +253,19 @@ def update_project(
 
 
 @app.post("/projects/daily-tasks/generate", response_model=list[Task], status_code=201)
-def generate_daily_tasks(session: Session = Depends(get_session)):
+def generate_daily_tasks(
+    current_user: User = Depends(auth.get_current_user),
+    session: Session = Depends(get_session),
+):
     today = datetime.now(timezone.utc).date()
     today_iso = today.isoformat()
     due = [
         p
         for p in session.exec(
-            select(Project).where(Project.daily_enabled.is_(True))
+            select(Project).where(
+                Project.daily_enabled.is_(True),
+                Project.user_id == current_user.id,
+            )
         ).all()
         if p.daily_template is not None and p.daily_last_generated != today_iso
     ]
@@ -217,7 +275,11 @@ def generate_daily_tasks(session: Session = Depends(get_session)):
     next_position = session.exec(
         select(func.count())
         .select_from(Task)
-        .where(Task.column_id == "todo", Task.archived.is_(False))
+        .where(
+            Task.column_id == "todo",
+            Task.archived.is_(False),
+            Task.user_id == current_user.id,
+        )
     ).one()
 
     created: list[Task] = []
@@ -233,6 +295,7 @@ def generate_daily_tasks(session: Session = Depends(get_session)):
             description=template.get("description"),
             column_id="todo",
             project_id=project.id,
+            user_id=current_user.id,
             position=next_position,
             checklist=[
                 {"text": item, "checked": False} for item in template["checklist"]
@@ -251,8 +314,12 @@ def generate_daily_tasks(session: Session = Depends(get_session)):
 
 
 @app.delete("/projects/{project_id}", status_code=204)
-def delete_project(project_id: uuid.UUID, session: Session = Depends(get_session)):
-    project = get_project_or_404(session, project_id)
+def delete_project(
+    project_id: uuid.UUID,
+    current_user: User = Depends(auth.get_current_user),
+    session: Session = Depends(get_session),
+):
+    project = get_project_or_404(session, project_id, current_user.id)
     session.delete(project)
     session.commit()
 
@@ -260,6 +327,7 @@ def delete_project(project_id: uuid.UUID, session: Session = Depends(get_session
 @app.get("/work-blocks/stats/daily", response_model=list[DailyProjectStat])
 def daily_work_block_stats(
     days: int = Query(default=7, ge=1, le=90),
+    current_user: User = Depends(auth.get_current_user),
     session: Session = Depends(get_session),
 ):
     today = datetime.now(timezone.utc).date()
@@ -285,7 +353,10 @@ def daily_work_block_stats(
         .select_from(WorkBlock)
         .join(Task, Task.id == WorkBlock.task_id)
         .join(Project, Project.id == Task.project_id, isouter=True)
-        .where(func.coalesce(WorkBlock.started_at, WorkBlock.created_at) >= since)
+        .where(
+            func.coalesce(WorkBlock.started_at, WorkBlock.created_at) >= since,
+            Task.user_id == current_user.id,
+        )
         .group_by(day_bucket, Task.project_id, Project.name)
         .order_by(day_bucket)
     ).all()
@@ -307,9 +378,10 @@ def daily_work_block_stats(
 def create_work_block(
     task_id: uuid.UUID,
     payload: WorkBlockCreate,
+    current_user: User = Depends(auth.get_current_user),
     session: Session = Depends(get_session),
 ):
-    get_task_or_404(session, task_id)
+    get_task_or_404(session, task_id, current_user.id)
     data = payload.model_dump()
     if data["minutes"] is None:
         duration = payload.ended_at - payload.started_at
@@ -322,8 +394,12 @@ def create_work_block(
 
 
 @app.get("/tasks/{task_id}/work-blocks", response_model=list[WorkBlock])
-def list_work_blocks(task_id: uuid.UUID, session: Session = Depends(get_session)):
-    get_task_or_404(session, task_id)
+def list_work_blocks(
+    task_id: uuid.UUID,
+    current_user: User = Depends(auth.get_current_user),
+    session: Session = Depends(get_session),
+):
+    get_task_or_404(session, task_id, current_user.id)
     return session.exec(
         select(WorkBlock)
         .where(WorkBlock.task_id == task_id)
@@ -332,10 +408,18 @@ def list_work_blocks(task_id: uuid.UUID, session: Session = Depends(get_session)
 
 
 @app.delete("/tasks/{task_id}", status_code=204)
-def delete_task(task_id: uuid.UUID, session: Session = Depends(get_session)):
-    task = get_task_or_404(session, task_id)
+def delete_task(
+    task_id: uuid.UUID,
+    current_user: User = Depends(auth.get_current_user),
+    session: Session = Depends(get_session),
+):
+    task = get_task_or_404(session, task_id, current_user.id)
 
-    remaining = [t for t in column_tasks(session, task.column_id) if t.id != task.id]
+    remaining = [
+        t
+        for t in column_tasks(session, task.column_id, current_user.id)
+        if t.id != task.id
+    ]
     session.delete(task)
     reindex(remaining)
     session.add_all(remaining)
