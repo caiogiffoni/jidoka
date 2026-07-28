@@ -303,3 +303,46 @@ export async function fetchArchivedTasks(): Promise<Task[]> {
   const apiTasks: ApiTask[] = await res.json();
   return apiTasks.filter((t) => t.archived).map(toTask);
 }
+
+export type AuthActionState =
+  | { type: "error"; message: string }
+  | { type: "success"; message: string };
+
+export async function login(
+  _prevState: AuthActionState | null,
+  formData: FormData,
+): Promise<AuthActionState | null> {
+  const email = String(formData.get("email") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  if (!email || !password) {
+    return { type: "error", message: "Please enter both email and password." };
+  }
+  // Backend auth endpoints are not wired yet; this action returns a placeholder
+  // response so the UI can be built and tested independently.
+  return {
+    type: "success",
+    message: "Auth backend endpoints are not implemented yet.",
+  };
+}
+
+export async function register(
+  _prevState: AuthActionState | null,
+  formData: FormData,
+): Promise<AuthActionState | null> {
+  const email = String(formData.get("email") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  const confirmPassword = String(formData.get("confirmPassword") ?? "");
+  if (!email || !password) {
+    return { type: "error", message: "Please enter both email and password." };
+  }
+  if (password.length < 8) {
+    return { type: "error", message: "Password must be at least 8 characters." };
+  }
+  if (password !== confirmPassword) {
+    return { type: "error", message: "Passwords do not match." };
+  }
+  return {
+    type: "success",
+    message: "Auth backend endpoints are not implemented yet.",
+  };
+}
