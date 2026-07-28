@@ -1,14 +1,17 @@
 import Link from "next/link";
 import { LayoutDashboard } from "lucide-react";
+import { requireAuth } from "@/app/actions";
 import { Board } from "@/components/board/board";
 import { AddTaskDialog } from "@/components/board/add-task-dialog";
 import { ArchivedTasksDialog } from "@/components/board/archived-tasks-dialog";
 import { PomodoroMenu } from "@/components/pomodoro/pomodoro-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { UserMenu } from "@/components/auth/user-menu";
 import { Button } from "@/components/ui/button";
 import { fetchProjects, fetchTasksByColumn } from "@/lib/api";
 
 export default async function BoardPage() {
+  const user = await requireAuth();
   const [initialTasks, projects] = await Promise.all([
     fetchTasksByColumn(),
     fetchProjects(),
@@ -40,6 +43,7 @@ export default async function BoardPage() {
           </Button>
           <PomodoroMenu />
           <ThemeToggle />
+          <UserMenu user={user} />
         </div>
       </header>
       <Board initialTasks={initialTasks} projects={projects} />

@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { KanbanSquare } from "lucide-react";
+import { requireAuth } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { UserMenu } from "@/components/auth/user-menu";
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
 import { ProjectList } from "@/components/projects/project-list";
 import { WeeklyBarChart } from "@/components/projects/weekly-bar-chart";
@@ -10,6 +12,7 @@ import { buildWeeklyChart } from "@/lib/weekly-chart";
 import { countTasksByProject } from "@/lib/project-task-counts";
 
 export default async function DashboardPage() {
+  const user = await requireAuth();
   const [projects, stats, tasks] = await Promise.all([
     fetchProjects(),
     fetchDailyStats(7),
@@ -38,6 +41,7 @@ export default async function DashboardPage() {
             </Link>
           </Button>
           <ThemeToggle />
+          <UserMenu user={user} />
         </div>
       </header>
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
