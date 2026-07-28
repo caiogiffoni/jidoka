@@ -24,6 +24,7 @@ export interface Task {
   checklist: ChecklistItem[];
   // ISO "YYYY-MM-DD", no time component.
   dueDate?: string;
+  archived?: boolean;
 }
 
 // Drafted through a popup styled like the real "Add task" dialog (see

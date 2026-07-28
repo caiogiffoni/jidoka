@@ -275,17 +275,31 @@ export async function deleteTask(taskId: string): Promise<void> {
   revalidatePath("/board");
 }
 
-export async function archiveTask(taskId: string): Promise<void> {
+export async function archiveTask(
+  taskId: string,
+  archived = true,
+): Promise<void> {
   const res = await fetch(
     `${BACKEND_URL}/tasks/${encodeURIComponent(taskId)}/archive`,
     {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ archived: true }),
+      body: JSON.stringify({ archived }),
     },
   );
   if (!res.ok) {
     throw new Error(`PATCH /tasks/${taskId}/archive failed: ${res.status}`);
   }
   revalidatePath("/board");
+}
+
+export async function fetchArchivedTasks(): Promise<Task[]> {
+  const res = await fetch(`${BACKEND_URL}/tasks?include_archived=true`, {
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(`GET /tasks?include_archived=true failed: ${res.status}`);
+  }
+  const apiTasks: ApiTask[] = await res.json();
+  return apiTasks.filter((t) => t.archived).map(toTask);
 }

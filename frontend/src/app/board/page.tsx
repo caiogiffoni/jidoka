@@ -2,6 +2,7 @@ import Link from "next/link";
 import { LayoutDashboard } from "lucide-react";
 import { Board } from "@/components/board/board";
 import { AddTaskDialog } from "@/components/board/add-task-dialog";
+import { ArchivedTasksDialog } from "@/components/board/archived-tasks-dialog";
 import { PomodoroMenu } from "@/components/pomodoro/pomodoro-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ export default async function BoardPage() {
         </p>
         <div className="ml-auto flex items-center gap-2">
           <AddTaskDialog projects={projects} />
+          <ArchivedTasksDialog />
           <Button
             variant="ghost"
             size="icon"
