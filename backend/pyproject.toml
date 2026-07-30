@@ -15,9 +15,27 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28.1",
+    "bandit>=1.9.0",
+    "httpx2>=0.1.0",
+    "hypothesis>=6.148.0",
+    "mutmut>=3.3.0",
     "pytest>=9.1.1",
+    "pytest-cov>=7.0.0",
+    "radon>=6.0.1",
 ]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+markers = [
+    "critical: highest-risk API-consumer scenarios",
+    "standard: normal API-consumer scenarios",
+    "edge: boundary and unusual API-consumer scenarios",
+]
+
+[tool.mutmut]
+source_paths = ["main.py", "auth.py", "models.py"]
+pytest_add_cli_args_test_selection = ["tests/"]
+runner = "bash gauntlet/run_tests_for_mutmut.sh"
+backup = false
+debug = false
+also_copy = ["blocked_usernames.py", "db.py"]

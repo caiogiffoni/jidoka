@@ -11,25 +11,21 @@ The name comes from the Toyota principle _jidoka_: automation with a human touch
 - **Card checklists** - any card can hold a Trello-style checklist, added at creation or afterward: check items off, add or remove them, and see progress (e.g. "2/4") right on the card face.
 - **Due dates** - set an optional due date on any card; overdue cards get a quiet red badge, both in the card dialog and on the card face.
 - **Markdown formatting toolbar** - bold, italic, lists, and links, one click each, on any description field.
-- **Chat with your board** - an agent with tools (`create_task`, `move_task`, `breakdown_task`, `prioritize_backlog`, `search_tasks`) that streams its actions to the UI as cards move live.
-- **Human-in-the-loop approval** - the agent never writes directly. It builds a diff of proposed changes, execution pauses, and resumes only on your decision.
-- **Paste-to-tickets** - paste a syllabus or project brief and get structured task extraction, routed through the same propose → approve flow.
-- **Semantic search** over cards via pgvector embeddings.
 - **Time tracking** - start a pomodoro-style work block from any card to see how long each task actually took. Tasks optionally link to a project, and a dashboard rolls time up per project with a 7-day stacked-bar chart.
+- **Auth** - register and log in with email, username, and password. JWT access tokens are issued by FastAPI and stored in `HttpOnly` cookies by the Next.js frontend; all board endpoints require authentication and are scoped to the current user.
 - **Daily project tasks** - opt a project into a daily template - an optional title, description, and checklist, drafted in a popup that looks just like creating a real task - at creation or later; a fresh card cloned from that template is generated automatically once a day for every opted-in project, named after the project and date.
-- **Traced and evaluated** - Langfuse tracing on every agent run, plus a pytest eval suite asserting correct tool selection and arguments. _(Results will be published here.)_
 
 ## Stack
 
-| Layer     | Choice                                                                              |
-| --------- | ----------------------------------------------------------------------------------- |
-| Frontend  | Next.js 15 (App Router), TypeScript, Tailwind v4, shadcn/ui, dnd-kit                |
-| Agent     | Python, FastAPI, LangGraph (checkpointed state machine, `interrupt()` for approval) |
-| Data      | Postgres + pgvector                                                                 |
-| Streaming | SSE from FastAPI, consumed via the Vercel AI SDK                                    |
-| Infra     | Docker Compose                                                                      |
+| Layer     | Choice                                                                                         |
+| --------- | ---------------------------------------------------------------------------------------------- |
+| Frontend  | Next.js 16 (App Router), TypeScript, Tailwind v4, shadcn/ui, dnd-kit                           |
+| Agent     | Python, FastAPI, LangGraph (checkpointed state machine, `interrupt()` for approval) — planned |
+| Data      | Postgres + pgvector                                                                            |
+| Streaming | SSE from FastAPI, consumed via the Vercel AI SDK — planned                                     |
+| Infra     | Docker Compose                                                                                 |
 
-The agent is an explicit LangGraph state machine because the feature's control flow _is_ the graph: an agent ↔ tools loop, an interrupt for approval, and checkpointed state resumable per board.
+The agent will be an explicit LangGraph state machine because the feature's control flow _is_ the graph: an agent ↔ tools loop, an interrupt for approval, and checkpointed state resumable per board.
 
 ## Data model
 
@@ -77,7 +73,7 @@ Current (SQLModel, in `backend/models.py`):
 
 The base kanban is built and usable by hand: create, edit, and delete cards (confirm dialog + undo toast), drag them across columns with pointer or keyboard (with screen-reader announcements). Mutations are optimistic with rollback and error toasts; the frontend persists through Server Actions to FastAPI, the single writer to Postgres.
 
-A Backlog column sits before To Do, with a neutral gray status dot rather than a fourth andon color - it marks work that isn't queued yet, not a stage of work in progress. Any card can also be archived instead of deleted, from an icon in its detail dialog: it disappears from the board immediately behind the same undo-toast pattern as delete, but there's deliberately no confirm dialog (archiving isn't destructive) and no UI yet to browse or restore archived cards once the toast closes.
+A Backlog column sits before To Do, with a neutral gray status dot rather than a fourth andon color - it marks work that isn't queued yet, not a stage of work in progress. Any card can also be archived instead of deleted, from an icon in its detail dialog: it disappears from the board immediately behind the same undo-toast pattern as delete (archiving isn't destructive, so there's no confirm dialog). Archived cards can be browsed and restored from the archive button in the board header.
 
 Any card can carry a checklist - drafted right in the "Add task" form, or added later from the task detail dialog's view mode with no need to enter edit mode first. Check an item, add one, or remove one and it saves immediately (optimistic, with rollback and a toast if the save fails); the board card face shows a quiet progress count (e.g. "2/4") whenever a card has one.
 
@@ -87,9 +83,13 @@ A pomodoro timer lives in the board header: the classic work / break / long-brea
 
 A projects + weekly time dashboard lives at `/` (the kanban board moved to `/board`): create projects, each with an optional Markdown description, and see the last 7 days of focus time as a stacked bar chart broken down by day and by project, with a "Not defined" bucket for tasks with no project. Each project row also shows its linked tasks' counts by board column (To Do / In Progress / Done). A task can link to a project at creation via the "Add task" dialog, or be reassigned later from the task detail dialog's edit mode. That dialog also renders a task's description as Markdown, shows the project it's linked to and the total time logged against it, and supports manual minutes entry independent of the pomodoro timer.
 
-Any project can opt into daily tasks via a "Generate a daily task" checkbox, available both when creating the project and later from its edit dialog. Checking it opens a popup that looks just like the real "Add task" dialog - Title, Description, Checklist, even Project and Column shown for visual consistency, though the latter two are fixed (a generated card always belongs to this project and always lands in To Do). Title is optional too: the generated card is always named "Daily - DD-MM-YY - \<project\>", with the template's title appended only if you gave it one, not replacing it. "Save template" saves it back into the project's own form rather than the board, so nothing shows up immediately. Once a day, that named card is generated in To Do with the template's description and checklist, for every opted-in project - idempotent per UTC day, so it's safe to trigger more than once. There's no real login system yet, so "once a day" is approximated client-side (fires on first app load per browser-local day) rather than tied to an actual sign-in event; that will move to the real login/session-start event once auth ships.
+Any project can opt into daily tasks via a "Generate a daily task" checkbox, available both when creating the project and later from its edit dialog. Checking it opens a popup that looks just like the real "Add task" dialog - Title, Description, Checklist, even Project and Column shown for visual consistency, though the latter two are fixed (a generated card always belongs to this project and always lands in To Do). Title is optional too: the generated card is always named "Daily - DD-MM-YY - \<project\>", with the template's title appended only if you gave it one, not replacing it. "Save template" saves it back into the project's own form rather than the board, so nothing shows up immediately. Once a day, that named card is generated in To Do with the template's description and checklist, for every opted-in project - idempotent per UTC day, so it's safe to trigger more than once. The trigger currently fires on first app load per browser-local day; it can be moved to the login/session-start event now that auth is implemented.
 
-The agent, HITL approval flow, and semantic search are next, in that order.
+What's next:
+
+- **Chat agent + HITL approval** - an agent with tools (`create_task`, `move_task`, `breakdown_task`, `prioritize_backlog`, `search_tasks`) proposes changes as a diff; execution pauses until you approve, edit, or reject, and only then applies them to the board. Paste-to-tickets (syllabus/project brief → structured extraction → same propose → approve flow) ships with it.
+- **Semantic search** over cards via pgvector embeddings.
+- **Tracing and evals** - Langfuse tracing on every agent run, plus a pytest eval suite asserting correct tool selection and arguments. _(Results will be published here.)_
 
 ## Running locally
 
@@ -104,19 +104,35 @@ The backend can also run outside Docker with `cd backend && uv run fastapi dev m
 
 ```bash
 docker compose up -d db          # Postgres needs to be reachable on :5432
-cd backend && uv run pytest -v
+cd backend && uv run pytest -v   # full pytest suite
 
 cd frontend && pnpm test          # Vitest, no backend/Postgres needed
 ```
 
 The suite in `backend/tests/` exercises the FastAPI endpoints against a real Postgres - each test runs inside a transaction that's rolled back afterward, so it never leaves data in the dev database. It runs automatically in CI (`.github/workflows/backend-tests.yml`) on any push or PR touching `backend/`.
 
+A backend testing gauntlet lives in `backend/gauntlet/`:
+
+```bash
+cd backend
+make bandit        # security linter on source files
+make complexity    # cyclomatic complexity gate (max 10)
+make module-size   # LOC advisory gate
+make crap          # CRAP score gate (max 30)
+make coverage-gate # 90% coverage gate
+make gauntlet      # all gates + unit + acceptance + property tests + coverage
+make mutmut        # mutation testing (slow — run on demand)
+make test-complete # gauntlet + mutation testing
+```
+
+Current gauntlet status: 132 tests passing, 98% coverage, bandit clean, complexity ≤10, CRAP ≤30, mutation kill rate 195/195.
+
 ## Backlog
 
 Deliberately deferred engineering follow-ups:
 
 - **Frontend E2E tests **
-- **Daily task trigger** - move off the client-side "first load per day" approximation onto the real login/session-start event once auth ships
+- **Daily task trigger** - move generation trigger from "first app load per browser-local day" to the login/session-start event
 
 ## Design workflow
 
