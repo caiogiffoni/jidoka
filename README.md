@@ -111,10 +111,9 @@ cd frontend && pnpm test          # Vitest, no backend/Postgres needed
 
 The suite in `backend/tests/` exercises the FastAPI endpoints against a real Postgres - each test runs inside a transaction that's rolled back afterward, so it never leaves data in the dev database. It runs automatically in CI (`.github/workflows/backend-tests.yml`) on any push or PR touching `backend/`.
 
-A backend testing gauntlet lives in `backend/gauntlet/`:
+A backend testing gauntlet lives in `backend/gauntlet/` and is driven from the root `Makefile`:
 
 ```bash
-cd backend
 make bandit        # security linter on source files
 make complexity    # cyclomatic complexity gate (max 10)
 make module-size   # LOC advisory gate
