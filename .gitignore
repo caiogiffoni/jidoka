@@ -26,6 +26,8 @@ coverage/
 .coverage
 htmlcov/
 backend/mutants/
+backend/gauntlet/bandit-report.json
+backend/gauntlet/bandit-source-report.json
 
 # Docker
 docker-compose.override.yml
