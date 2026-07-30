@@ -1,0 +1,8 @@
+# Target modules for mutation testing, prioritized by risk.
+# main.py contains move/archive/delete reindexing, daily generation,
+# work-block minutes, and stats aggregation.
+main.py
+# auth.py handles password hashing, JWT encode/decode, and current-user lookup.
+auth.py
+# models.py contains username/password validators and the User/Project/Task schemas.
+models.py
