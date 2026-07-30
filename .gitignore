@@ -25,6 +25,7 @@ venv/
 coverage/
 .coverage
 htmlcov/
+backend/mutants/
 
 # Docker
 docker-compose.override.yml
