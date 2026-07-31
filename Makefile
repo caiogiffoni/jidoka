@@ -1,7 +1,7 @@
 .PHONY: dev backend frontend test test-coverage test-frontend \
   bandit complexity module-size crap coverage-gate \
   mutmut mutmut-results gauntlet gauntlet-mutmut test-complete \
-  clean
+  db-purge clean
 
 # ---------------------------------------------------------------------------
 # Local development
@@ -83,6 +83,19 @@ gauntlet-mutmut: gauntlet
 
 # Complete verification: every gate, every test, plus mutation testing.
 test-complete: gauntlet-mutmut
+
+# ---------------------------------------------------------------------------
+# Database
+# ---------------------------------------------------------------------------
+
+# Purge the local Postgres volume and recreate the stack.
+# This is destructive: all local data is lost. Pass FORCE=1 to skip the prompt.
+db-purge:
+	@if [ "$(FORCE)" != "1" ]; then \
+	  read -p "Delete local Postgres data? [y/N] " confirm && [ "$$confirm" = "y" ] || (echo "Aborted."; exit 1); \
+	fi
+	docker compose down -v
+	docker compose up -d
 
 # ---------------------------------------------------------------------------
 # Cleanup generated artifacts
