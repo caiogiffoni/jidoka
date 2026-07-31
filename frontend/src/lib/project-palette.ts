@@ -1,5 +1,5 @@
 // Categorical palette for project identity in the weekly time chart.
-// Distinct in hue from Electric Violet (--primary, ~293deg, reserved for
+// Distinct in hue from Cord Orange (--primary, ~55deg, reserved for
 // human/agent action) and the three andon status hues (sky ~237deg,
 // amber ~70deg, emerald ~162deg, reserved for the column-header dot) per
 // DESIGN.md's One Lever Rule and Andon Rule.
