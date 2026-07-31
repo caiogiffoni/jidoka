@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { login, type AuthActionState } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 
 export function LoginForm() {
   const [state, formAction, isPending] = useActionState<
@@ -36,10 +37,9 @@ export function LoginForm() {
         >
           Password
         </label>
-        <Input
+        <PasswordInput
           id="login-password"
           name="password"
-          type="password"
           autoComplete="current-password"
           placeholder="••••••••"
           required

@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { register, type AuthActionState } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { cn } from "@/lib/utils";
 
 const USERNAME_PATTERN = "^[a-zA-Z][a-zA-Z0-9_-]{2,29}$";
@@ -63,10 +64,9 @@ export function RegisterForm() {
         >
           Password
         </label>
-        <Input
+        <PasswordInput
           id="register-password"
           name="password"
-          type="password"
           autoComplete="new-password"
           placeholder="••••••••"
           required
@@ -84,10 +84,9 @@ export function RegisterForm() {
         >
           Confirm password
         </label>
-        <Input
+        <PasswordInput
           id="register-confirm-password"
           name="confirmPassword"
-          type="password"
           autoComplete="new-password"
           placeholder="••••••••"
           required
