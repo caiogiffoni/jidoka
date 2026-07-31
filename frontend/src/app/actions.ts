@@ -163,8 +163,14 @@ export async function updateProject(input: {
 // Generates today's checklist card for each daily-enabled project. Called
 // once per browser-local calendar day by DailyTaskGenerator (mounted in the
 // root layout) - idempotent server-side per UTC day, so redundant calls are
-// harmless no-ops.
+// harmless no-ops. Silently skips when there is no session (e.g. on /login).
 export async function generateDailyTasks(): Promise<{ created: number }> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(AUTH_COOKIE)?.value;
+  if (!token) {
+    return { created: 0 };
+  }
+
   const res = await apiFetch(`${BACKEND_URL}/projects/daily-tasks/generate`, {
     method: "POST",
   });
