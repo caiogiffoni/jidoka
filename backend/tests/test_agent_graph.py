@@ -135,7 +135,7 @@ class TestAgentGraphHitlFlow:
 class TestDefaultModel:
     """Coverage for the production LLM factory that mutmut otherwise flags."""
 
-    def test_default_model_uses_configured_openai_model(self):
+    def test_default_model_uses_configured_openrouter_model(self):
         captured = {}
         bound_model = object()
 
@@ -143,39 +143,50 @@ class TestDefaultModel:
             captured["kwargs"] = kwargs
             return type("Chat", (), {"bind_tools": lambda self, tools: bound_model})()
 
-        with patch.dict(os.environ, {"OPENAI_MODEL": "gpt-4o-sentinel"}, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "OPENROUTER_API_KEY": "sk-or-v1-test",
+                "OPENROUTER_MODEL": "openai/gpt-4o-sentinel",
+            },
+            clear=False,
+        ):
             with patch("agent.graph.ChatOpenAI", mock_chat):
                 result = _default_model()
 
         assert result is bound_model
-        assert captured["kwargs"]["model"] == "gpt-4o-sentinel"
+        assert captured["kwargs"]["model"] == "openai/gpt-4o-sentinel"
+        assert captured["kwargs"]["base_url"] == "https://openrouter.ai/api/v1"
+        assert captured["kwargs"]["api_key"] == "sk-or-v1-test"
 
-    def test_default_model_falls_back_to_gpt_4o_mini(self):
+    def test_default_model_falls_back_to_openrouter_gpt_4o_mini(self):
         captured = {}
 
         def mock_chat(**kwargs):
             captured["kwargs"] = kwargs
             return type("Chat", (), {"bind_tools": lambda self, tools: "bound"})()
 
-        # Ensure OPENAI_MODEL is not set so we exercise the fallback default.
-        with patch.dict(os.environ, {"OPENAI_MODEL": ""}, clear=False):
+        # Ensure OPENROUTER_MODEL is not set so we exercise the fallback default.
+        with patch.dict(os.environ, {"OPENROUTER_MODEL": ""}, clear=False):
             with patch("agent.graph.ChatOpenAI", mock_chat):
                 _default_model()
 
-        assert captured["kwargs"]["model"] == "gpt-4o-mini"
+        assert captured["kwargs"]["model"] == "openai/gpt-4o-mini"
+        assert captured["kwargs"]["base_url"] == "https://openrouter.ai/api/v1"
 
-    def test_default_model_uses_openai_model_env_var(self):
+    def test_default_model_uses_openrouter_model_env_var(self):
         captured = {}
 
         def mock_chat(**kwargs):
             captured["kwargs"] = kwargs
             return type("Chat", (), {"bind_tools": lambda self, tools: "bound"})()
 
-        with patch.dict(os.environ, {"OPENAI_MODEL": "gpt-4o"}, clear=True):
+        with patch.dict(os.environ, {"OPENROUTER_MODEL": "deepseek/deepseek-chat"}, clear=True):
             with patch("agent.graph.ChatOpenAI", mock_chat):
                 _default_model()
 
-        assert captured["kwargs"]["model"] == "gpt-4o"
+        assert captured["kwargs"]["model"] == "deepseek/deepseek-chat"
+        assert captured["kwargs"]["base_url"] == "https://openrouter.ai/api/v1"
 
     def test_default_model_binds_create_task_tool(self):
         captured = {}
@@ -187,7 +198,7 @@ class TestDefaultModel:
                 {"bind_tools": lambda self, tools: captured.setdefault("tools", tools)},
             )()
 
-        with patch.dict(os.environ, {"OPENAI_MODEL": ""}, clear=False):
+        with patch.dict(os.environ, {"OPENROUTER_MODEL": ""}, clear=False):
             with patch("agent.graph.ChatOpenAI", mock_chat):
                 _default_model()
 

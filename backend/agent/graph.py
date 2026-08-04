@@ -45,10 +45,12 @@ model = None
 
 
 def _default_model():
-    """Lazy factory for the production LLM."""
-    return ChatOpenAI(model=os.environ.get("OPENAI_MODEL") or "gpt-4o-mini").bind_tools(
-        [create_task_tool]
-    )
+    """Lazy factory for the production LLM routed through OpenRouter."""
+    return ChatOpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=os.environ.get("OPENROUTER_API_KEY"),
+        model=os.environ.get("OPENROUTER_MODEL") or "openai/gpt-4o-mini",
+    ).bind_tools([create_task_tool])
 
 
 def _resolve_model(explicit_model):
@@ -90,7 +92,7 @@ def _session_from_config(config: RunnableConfig):
 def build_graph(model=None):
     """Build and compile the HITL agent graph."""
     # Model resolution is deferred to agent_node so importing this module does
-    # not require OPENAI_API_KEY. Tests pass a fake model explicitly; production
+    # not require OPENROUTER_API_KEY. Tests pass a fake model explicitly; production
     # resolves the module-level `model` global or falls back to ChatOpenAI.
     explicit_model = model
 
@@ -182,5 +184,5 @@ def build_graph(model=None):
 
 
 # Default graph instance used by the SSE endpoint. The model is resolved lazily
-# inside agent_node, so importing this module does not require OPENAI_API_KEY.
+# inside agent_node, so importing this module does not require OPENROUTER_API_KEY.
 graph = build_graph(model=None)
