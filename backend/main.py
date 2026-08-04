@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 import auth
+from agent.routes import router as agent_router
 from db import create_db_and_tables
 from routers import health, projects, tasks, work_blocks
 
@@ -22,3 +23,4 @@ app.include_router(health.router)
 app.include_router(tasks.router)
 app.include_router(projects.router)
 app.include_router(work_blocks.router)
+app.include_router(agent_router)
