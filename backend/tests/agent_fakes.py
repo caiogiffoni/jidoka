@@ -23,13 +23,11 @@ class FakeToolCallingModel(BaseChatModel):
         return "fake_tool_calling_model"
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        # Standard LangChain tool-call shape so AIMessage validates it directly.
         tool_call = {
             "id": "call_1",
-            "type": "tool_call",
-            "function": {
-                "name": "create_task",
-                "arguments": self.tool_args,
-            },
+            "name": "create_task",
+            "args": self.tool_args,
         }
         message = AIMessage(content="", tool_calls=[tool_call])
         generation = ChatGeneration(message=message)

@@ -28,12 +28,17 @@ def auth_client(client, test_user):
 
 class TestAgentStreamAuth:
     def test_stream_requires_auth(self, client):
+        import auth
+
+        # The shared client fixture authenticates requests; remove that override
+        # so we can assert the endpoint rejects unauthenticated traffic.
+        client.app.dependency_overrides.pop(auth.get_current_user, None)
         response = client.post("/agent/stream", json={"thread_id": str(uuid.uuid4())})
         assert response.status_code == 401
 
     def test_stream_accepts_valid_auth(self, auth_client):
         with patch("agent.routes.graph") as mock_graph:
-            mock_graph.astream.return_value = iter([])
+            mock_graph.stream.return_value = iter([])
             response = auth_client.post(
                 "/agent/stream",
                 json={"thread_id": str(uuid.uuid4()), "message": "hi"},
@@ -51,7 +56,7 @@ class TestAgentStreamEvents:
             yield {"event": "done", "data": "{}"}
 
         with patch("agent.routes.graph") as mock_graph:
-            mock_graph.astream.return_value = fake_stream()
+            mock_graph.stream.return_value = fake_stream()
             response = auth_client.post(
                 "/agent/stream",
                 json={"thread_id": str(uuid.uuid4()), "message": "Add a task"},
@@ -76,7 +81,7 @@ class TestAgentStreamEvents:
             yield {"event": "done", "data": "{}"}
 
         with patch("agent.routes.graph") as mock_graph:
-            mock_graph.astream.return_value = fake_stream()
+            mock_graph.stream.return_value = fake_stream()
             response = auth_client.post(
                 "/agent/stream",
                 json={
@@ -91,11 +96,8 @@ class TestAgentStreamEvents:
         assert apply["data"]["created_tasks"][0]["title"] == "Wire HITL flow"
 
     def test_stream_emits_error_on_exception(self, auth_client):
-        def fake_stream(*args, **kwargs):
-            raise RuntimeError("LLM exploded")
-
         with patch("agent.routes.graph") as mock_graph:
-            mock_graph.astream.return_value = fake_stream()
+            mock_graph.stream.side_effect = RuntimeError("LLM exploded")
             response = auth_client.post(
                 "/agent/stream",
                 json={"thread_id": str(uuid.uuid4()), "message": "Add a task"},

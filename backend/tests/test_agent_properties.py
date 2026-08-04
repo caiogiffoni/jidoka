@@ -8,7 +8,6 @@ import uuid
 
 import pytest
 from hypothesis import HealthCheck, given, settings, strategies as st
-from langgraph.errors import GraphInterrupt
 from langgraph.types import Command
 
 from agent.graph import build_graph
@@ -25,14 +24,19 @@ text_strategy = st.text(alphabet=st.characters(whitelist_categories=("L", "N")),
 column_strategy = st.sampled_from(VALID_COLUMNS)
 
 
-def _make_graph_with_title(title: str, column_id: str) -> tuple:
+def _make_graph_with_title(title: str, column_id: str, test_user) -> tuple:
     """Build a graph whose fake LLM proposes a single create_task change."""
     model = FakeToolCallingModel(
         tool_args={"title": title, "column_id": column_id}
     )
     graph = build_graph(model=model)
     thread_id = str(uuid.uuid4())
-    config = {"configurable": {"thread_id": thread_id}}
+    config = {
+        "configurable": {
+            "thread_id": thread_id,
+            "user_id": str(test_user.id),
+        }
+    }
     return graph, config
 
 
@@ -71,15 +75,13 @@ class TestApprovedChangeProperties:
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
     def test_approved_change_creates_task_with_matching_fields(self, session, test_user, title, column_id):
-        graph, config = _make_graph_with_title(title, column_id)
+        graph, config = _make_graph_with_title(title, column_id, test_user)
+        config["configurable"]["session"] = session
 
-        try:
-            graph.invoke(
-                {"messages": [{"role": "user", "content": "add task"}]},
-                config=config,
-            )
-        except GraphInterrupt:
-            pass
+        graph.invoke(
+            {"messages": [{"role": "user", "content": "add task"}]},
+            config=config,
+        )
 
         final_state = graph.invoke(Command(resume={"approved": True}), config=config)
         applied = final_state["applied_results"]
@@ -97,21 +99,19 @@ class TestRejectedChangeProperties:
         max_examples=30,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
-    def test_rejected_change_creates_no_task(self, session, title, column_id):
+    def test_rejected_change_creates_no_task(self, session, test_user, title, column_id):
         from sqlmodel import select
 
         from models import Task
 
-        graph, config = _make_graph_with_title(title, column_id)
+        graph, config = _make_graph_with_title(title, column_id, test_user)
+        config["configurable"]["session"] = session
         before = len(session.exec(select(Task)).all())
 
-        try:
-            graph.invoke(
-                {"messages": [{"role": "user", "content": "add task"}]},
-                config=config,
-            )
-        except GraphInterrupt:
-            pass
+        graph.invoke(
+            {"messages": [{"role": "user", "content": "add task"}]},
+            config=config,
+        )
 
         graph.invoke(Command(resume={"approved": False}), config=config)
         after = len(session.exec(select(Task)).all())

@@ -8,7 +8,6 @@ message → tool call → interrupt with diff → resume → apply (or not).
 import uuid
 
 import pytest
-from langgraph.errors import GraphInterrupt
 
 from agent.graph import build_graph
 from tests.agent_fakes import FakeToolCallingModel
@@ -25,13 +24,17 @@ class TestAgentGraphHitlFlow:
     def test_graph_interrupts_with_proposed_diff(self):
         graph = make_graph({"title": "Wire HITL flow", "column_id": "todo"})
 
-        with pytest.raises(GraphInterrupt) as exc_info:
-            graph.invoke(
-                {"messages": [{"role": "user", "content": "Add a task to wire HITL"}]},
-                config={"configurable": {"thread_id": str(uuid.uuid4())}},
-            )
+        result = graph.invoke(
+            {"messages": [{"role": "user", "content": "Add a task to wire HITL"}]},
+            config={
+                "configurable": {
+                    "thread_id": str(uuid.uuid4()),
+                    "user_id": str(uuid.uuid4()),
+                }
+            },
+        )
 
-        interrupt_value = exc_info.value.args[0]
+        interrupt_value = result["__interrupt__"][0].value
         diff = interrupt_value["diff"]
         assert len(diff.changes) == 1
         assert diff.changes[0].title == "Wire HITL flow"
@@ -40,15 +43,18 @@ class TestAgentGraphHitlFlow:
     def test_approved_create_task_persists_to_db(self, session, test_user):
         graph = make_graph({"title": "Wire HITL flow", "column_id": "todo"})
         thread_id = str(uuid.uuid4())
-        config = {"configurable": {"thread_id": thread_id}}
+        config = {
+            "configurable": {
+                "thread_id": thread_id,
+                "user_id": str(test_user.id),
+                "session": session,
+            }
+        }
 
-        try:
-            graph.invoke(
-                {"messages": [{"role": "user", "content": "Add a task"}]},
-                config=config,
-            )
-        except GraphInterrupt:
-            pass
+        graph.invoke(
+            {"messages": [{"role": "user", "content": "Add a task"}]},
+            config=config,
+        )
 
         from langgraph.types import Command
 
@@ -70,17 +76,20 @@ class TestAgentGraphHitlFlow:
 
         graph = make_graph({"title": "Wire HITL flow", "column_id": "todo"})
         thread_id = str(uuid.uuid4())
-        config = {"configurable": {"thread_id": thread_id}}
+        config = {
+            "configurable": {
+                "thread_id": thread_id,
+                "user_id": str(test_user.id),
+                "session": session,
+            }
+        }
 
         before = len(session.exec(select(Task)).all())
 
-        try:
-            graph.invoke(
-                {"messages": [{"role": "user", "content": "Add a task"}]},
-                config=config,
-            )
-        except GraphInterrupt:
-            pass
+        graph.invoke(
+            {"messages": [{"role": "user", "content": "Add a task"}]},
+            config=config,
+        )
 
         from langgraph.types import Command
 
@@ -98,7 +107,12 @@ class TestAgentGraphHitlFlow:
         with pytest.raises(Exception):
             graph.invoke(
                 {"messages": [{"role": "user", "content": "Add a task"}]},
-                config={"configurable": {"thread_id": str(uuid.uuid4())}},
+                config={
+                    "configurable": {
+                        "thread_id": str(uuid.uuid4()),
+                        "user_id": str(uuid.uuid4()),
+                    }
+                },
             )
 
     def test_graph_rejects_invalid_column_from_tool_args(self):
@@ -107,5 +121,10 @@ class TestAgentGraphHitlFlow:
         with pytest.raises(Exception):
             graph.invoke(
                 {"messages": [{"role": "user", "content": "Add a task"}]},
-                config={"configurable": {"thread_id": str(uuid.uuid4())}},
+                config={
+                    "configurable": {
+                        "thread_id": str(uuid.uuid4()),
+                        "user_id": str(uuid.uuid4()),
+                    }
+                },
             )
