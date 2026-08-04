@@ -2,8 +2,6 @@
 
 import { useCallback, useRef, useState } from "react";
 
-import { AUTH_COOKIE } from "@/lib/auth";
-
 type Status = "idle" | "streaming" | "waiting" | "error";
 
 interface Message {
@@ -34,12 +32,6 @@ interface UseAgentOptions {
   onApply?: (tasks: AppliedTask[]) => void;
 }
 
-function getAuthToken(): string | null {
-  if (typeof document === "undefined") return null;
-  const match = document.cookie.match(new RegExp(`(^| )${AUTH_COOKIE}=([^;]+)`));
-  return match?.[2] ?? null;
-}
-
 function parseSSE(raw: string): { event: string; data: unknown }[] {
   const events: { event: string; data: unknown }[] = [];
   const blocks = raw.trim().split("\n\n");
@@ -68,12 +60,10 @@ async function postStream(
   threadId: string,
   payload: { message?: string; resume?: { approved: boolean } },
 ) {
-  const token = getAuthToken();
   const res = await fetch("/agent/stream", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({ thread_id: threadId, ...payload }),
   });
@@ -97,6 +87,11 @@ export function useAgent({ onApply }: UseAgentOptions = {}) {
           sawInterruptRef.current = true;
           setPendingDiff(diff);
           setStatus("waiting");
+        } else if (event === "message") {
+          const msg = data as { role: string; content: string };
+          if (msg.role === "assistant" && msg.content) {
+            setMessages((prev) => [...prev, { role: "assistant", content: msg.content }]);
+          }
         } else if (event === "apply") {
           const created = (data as { created_tasks?: AppliedTask[] }).created_tasks ?? [];
           onApply?.(created);

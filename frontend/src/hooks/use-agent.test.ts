@@ -59,6 +59,29 @@ describe("useAgent", () => {
     );
   });
 
+  it("appends assistant messages from the stream", async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(
+        makeStream([
+          'event: message\ndata: {"role":"assistant","content":"Hello"}\n\n',
+          "event: done\ndata: {}\n\n",
+        ]),
+        { headers: { "content-type": "text/event-stream" } },
+      ),
+    );
+
+    const { result } = renderHook(() => useAgent());
+
+    await act(async () => {
+      await result.current.send("Hi");
+    });
+
+    expect(result.current.messages).toContainEqual(
+      expect.objectContaining({ role: "assistant", content: "Hello" }),
+    );
+    expect(result.current.status).toBe("idle");
+  });
+
   it("shows a pending diff when the stream emits an interrupt event", async () => {
     vi.mocked(global.fetch).mockResolvedValueOnce(
       new Response(
