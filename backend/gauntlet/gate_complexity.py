@@ -4,7 +4,18 @@
 import subprocess
 import sys
 
-source_files = ["main.py", "auth.py", "models.py", "db.py", "blocked_usernames.py"]
+source_files = [
+    "main.py",
+    "auth.py",
+    "models.py",
+    "db.py",
+    "blocked_usernames.py",
+    "services.py",
+    "routers/health.py",
+    "routers/tasks.py",
+    "routers/projects.py",
+    "routers/work_blocks.py",
+]
 max_cc = 10
 # radon grades: A=1-5, B=6-10, C=11-20; use --min C to catch anything above 10.
 min_grade = "C"

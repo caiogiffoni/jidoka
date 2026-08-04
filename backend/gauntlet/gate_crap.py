@@ -5,7 +5,18 @@ import json
 import subprocess
 import sys
 
-source_files = ["main.py", "auth.py", "models.py", "db.py", "blocked_usernames.py"]
+source_files = [
+    "main.py",
+    "auth.py",
+    "models.py",
+    "db.py",
+    "blocked_usernames.py",
+    "services.py",
+    "routers/health.py",
+    "routers/tasks.py",
+    "routers/projects.py",
+    "routers/work_blocks.py",
+]
 crap_threshold = 30
 
 # Run radon cc in JSON mode

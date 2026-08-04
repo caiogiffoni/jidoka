@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 import db
 import main
+from routers import projects as projects_router
 
 
 @pytest.fixture()
@@ -135,7 +136,7 @@ def test_daily_generation_fires_again_on_next_utc_day(client, monkeypatch):
             "daily_template": {"checklist": ["Post update"]},
         },
     )
-    monkeypatch.setattr(main, "datetime", _FakeDatetime)
+    monkeypatch.setattr(projects_router, "datetime", _FakeDatetime)
 
     _FakeDatetime.current = datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc)
     first = client.post("/projects/daily-tasks/generate")

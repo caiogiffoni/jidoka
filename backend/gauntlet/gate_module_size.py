@@ -4,7 +4,18 @@
 import subprocess
 import sys
 
-source_files = ["main.py", "auth.py", "models.py", "db.py", "blocked_usernames.py"]
+source_files = [
+    "main.py",
+    "auth.py",
+    "models.py",
+    "db.py",
+    "blocked_usernames.py",
+    "services.py",
+    "routers/health.py",
+    "routers/tasks.py",
+    "routers/projects.py",
+    "routers/work_blocks.py",
+]
 soft_limit = 300
 hard_limit = 500
 
