@@ -15,10 +15,11 @@ import { useAgent } from "@/hooks/use-agent";
 interface ChatPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onApply?: (tasks: { id: string; title: string; column_id: string }[]) => void;
 }
 
-export function ChatPanel({ open, onOpenChange }: ChatPanelProps) {
-  const { messages, pendingDiff, status, error, send, approve, reject } = useAgent();
+export function ChatPanel({ open, onOpenChange, onApply }: ChatPanelProps) {
+  const { messages, pendingDiff, status, error, send, approve, reject } = useAgent({ onApply });
   const [input, setInput] = React.useState("");
 
   const handleSubmit = (e: React.FormEvent) => {

@@ -3,8 +3,8 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { AUTH_COOKIE } from "@/lib/auth";
 import {
-  AUTH_COOKIE,
   authHeaders,
   BACKEND_URL,
   toProject,

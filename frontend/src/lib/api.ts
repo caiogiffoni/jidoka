@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 
+import { AUTH_COOKIE } from "./auth";
 import type {
   ChecklistItem,
   ColumnId,
@@ -12,8 +13,6 @@ import type {
 // Server-side only: Server Components and Server Actions proxy to FastAPI,
 // which is the single writer to Postgres. The browser never calls it directly.
 export const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
-
-export const AUTH_COOKIE = "jidoka_session";
 
 export async function authHeaders(): Promise<Record<string, string>> {
   const cookieStore = await cookies();

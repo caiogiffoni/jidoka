@@ -7,6 +7,7 @@ import { ArchivedTasksDialog } from "@/components/board/archived-tasks-dialog";
 import { PomodoroMenu } from "@/components/pomodoro/pomodoro-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { UserMenu } from "@/components/auth/user-menu";
+import { AgentChatButton } from "@/components/agent/agent-chat-button";
 import { Button } from "@/components/ui/button";
 import { fetchProjects, fetchTasksByColumn } from "@/lib/api";
 
@@ -31,6 +32,7 @@ export default async function BoardPage() {
         <div className="ml-auto flex items-center gap-2">
           <AddTaskDialog projects={projects} />
           <ArchivedTasksDialog />
+          <AgentChatButton />
           <Button
             variant="ghost"
             size="icon"

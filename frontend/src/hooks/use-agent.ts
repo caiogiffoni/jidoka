@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 
-import { AUTH_COOKIE } from "@/lib/api";
+import { AUTH_COOKIE } from "@/lib/auth";
 
 type Status = "idle" | "streaming" | "waiting" | "error";
 
