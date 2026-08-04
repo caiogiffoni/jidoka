@@ -11,6 +11,7 @@ from typing import Any
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
+from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
@@ -45,9 +46,7 @@ model = None
 
 def _default_model():
     """Lazy factory for the production LLM."""
-    from langchain_openai import ChatOpenAI
-
-    return ChatOpenAI(model=os.environ.get("OPENAI_MODEL", "gpt-4o-mini")).bind_tools(
+    return ChatOpenAI(model=os.environ.get("OPENAI_MODEL") or "gpt-4o-mini").bind_tools(
         [create_task_tool]
     )
 

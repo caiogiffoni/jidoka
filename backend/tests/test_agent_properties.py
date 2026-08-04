@@ -44,7 +44,10 @@ class TestCreateTaskToolProperties:
     """Invariants of the create_task tool function."""
 
     @given(title=text_strategy, column_id=column_strategy)
-    @settings(max_examples=50)
+    @settings(
+        max_examples=50,
+        suppress_health_check=[HealthCheck.differing_executors],
+    )
     def test_valid_inputs_return_matching_change(self, title, column_id):
         result = create_task(title=title, column_id=column_id)
         assert result["type"] == "create_task"
@@ -52,14 +55,20 @@ class TestCreateTaskToolProperties:
         assert result["column_id"] == column_id
 
     @given(title=st.text(min_size=0, max_size=20))
-    @settings(max_examples=30)
+    @settings(
+        max_examples=30,
+        suppress_health_check=[HealthCheck.differing_executors],
+    )
     def test_blank_or_empty_title_is_rejected(self, title):
         if not title.strip():
             with pytest.raises(ValueError):
                 create_task(title=title)
 
     @given(column_id=st.text(min_size=1))
-    @settings(max_examples=30)
+    @settings(
+        max_examples=30,
+        suppress_health_check=[HealthCheck.differing_executors],
+    )
     def test_non_literal_column_is_rejected(self, column_id):
         if column_id not in VALID_COLUMNS:
             with pytest.raises(ValueError):
@@ -72,7 +81,10 @@ class TestApprovedChangeProperties:
     @given(title=text_strategy, column_id=column_strategy)
     @settings(
         max_examples=30,
-        suppress_health_check=[HealthCheck.function_scoped_fixture],
+        suppress_health_check=[
+            HealthCheck.function_scoped_fixture,
+            HealthCheck.differing_executors,
+        ],
     )
     def test_approved_change_creates_task_with_matching_fields(self, session, test_user, title, column_id):
         graph, config = _make_graph_with_title(title, column_id, test_user)
@@ -97,7 +109,10 @@ class TestRejectedChangeProperties:
     @given(title=text_strategy, column_id=column_strategy)
     @settings(
         max_examples=30,
-        suppress_health_check=[HealthCheck.function_scoped_fixture],
+        suppress_health_check=[
+            HealthCheck.function_scoped_fixture,
+            HealthCheck.differing_executors,
+        ],
     )
     def test_rejected_change_creates_no_task(self, session, test_user, title, column_id):
         from sqlmodel import select

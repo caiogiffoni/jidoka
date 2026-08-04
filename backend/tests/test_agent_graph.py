@@ -5,11 +5,13 @@ does not require an OpenAI API key. They assert the spec-level behavior:
 message → tool call → interrupt with diff → resume → apply (or not).
 """
 
+import os
 import uuid
+from unittest.mock import patch
 
 import pytest
 
-from agent.graph import build_graph
+from agent.graph import _default_model, build_graph
 from tests.agent_fakes import FakeToolCallingModel
 
 
@@ -128,3 +130,66 @@ class TestAgentGraphHitlFlow:
                     }
                 },
             )
+
+
+class TestDefaultModel:
+    """Coverage for the production LLM factory that mutmut otherwise flags."""
+
+    def test_default_model_uses_configured_openai_model(self):
+        captured = {}
+        bound_model = object()
+
+        def mock_chat(**kwargs):
+            captured["kwargs"] = kwargs
+            return type("Chat", (), {"bind_tools": lambda self, tools: bound_model})()
+
+        with patch.dict(os.environ, {"OPENAI_MODEL": "gpt-4o-sentinel"}, clear=False):
+            with patch("agent.graph.ChatOpenAI", mock_chat):
+                result = _default_model()
+
+        assert result is bound_model
+        assert captured["kwargs"]["model"] == "gpt-4o-sentinel"
+
+    def test_default_model_falls_back_to_gpt_4o_mini(self):
+        captured = {}
+
+        def mock_chat(**kwargs):
+            captured["kwargs"] = kwargs
+            return type("Chat", (), {"bind_tools": lambda self, tools: "bound"})()
+
+        # Ensure OPENAI_MODEL is not set so we exercise the fallback default.
+        with patch.dict(os.environ, {"OPENAI_MODEL": ""}, clear=False):
+            with patch("agent.graph.ChatOpenAI", mock_chat):
+                _default_model()
+
+        assert captured["kwargs"]["model"] == "gpt-4o-mini"
+
+    def test_default_model_uses_openai_model_env_var(self):
+        captured = {}
+
+        def mock_chat(**kwargs):
+            captured["kwargs"] = kwargs
+            return type("Chat", (), {"bind_tools": lambda self, tools: "bound"})()
+
+        with patch.dict(os.environ, {"OPENAI_MODEL": "gpt-4o"}, clear=True):
+            with patch("agent.graph.ChatOpenAI", mock_chat):
+                _default_model()
+
+        assert captured["kwargs"]["model"] == "gpt-4o"
+
+    def test_default_model_binds_create_task_tool(self):
+        captured = {}
+
+        def mock_chat(**kwargs):
+            return type(
+                "Chat",
+                (),
+                {"bind_tools": lambda self, tools: captured.setdefault("tools", tools)},
+            )()
+
+        with patch.dict(os.environ, {"OPENAI_MODEL": ""}, clear=False):
+            with patch("agent.graph.ChatOpenAI", mock_chat):
+                _default_model()
+
+        assert len(captured["tools"]) == 1
+        assert captured["tools"][0].name == "create_task"

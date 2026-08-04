@@ -16,15 +16,18 @@ os.environ.setdefault(
 
 @pytest.fixture()
 def session():
-    """One test = one DB transaction, rolled back at the end.
+    """One test = one DB savepoint, rolled back at the end.
 
     Keeps automated runs safe against the dev database (or CI's throwaway
-    one) without needing a second database just for tests.
+    one) without needing a second database just for tests. A nested
+    transaction is used so that production code that calls ``session.commit()``
+    only commits the savepoint and the outer rollback still discards everything.
     """
     db.create_db_and_tables()
     connection = db.engine.connect()
-    transaction = connection.begin()
+    transaction = connection.begin_nested()
     session = Session(bind=connection)
+    session.begin_nested()
     try:
         yield session
     finally:
