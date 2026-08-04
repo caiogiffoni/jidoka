@@ -1,11 +1,22 @@
-.PHONY: dev backend frontend test test-coverage test-frontend \
-  bandit complexity module-size crap coverage-gate \
-  mutmut mutmut-results gauntlet gauntlet-mutmut test-complete \
-  db-purge clean
+.PHONY: install install-backend install-frontend dev backend frontend \
+  test test-coverage test-frontend bandit complexity module-size \
+  crap coverage-gate mutmut mutmut-results gauntlet gauntlet-mutmut \
+  test-complete db-purge clean
 
 # ---------------------------------------------------------------------------
 # Local development
 # ---------------------------------------------------------------------------
+
+# Install all project dependencies (backend + frontend).
+install: install-backend install-frontend
+
+# Install backend Python dependencies using uv.
+install-backend:
+	cd backend && uv sync --locked
+
+# Install frontend Node.js dependencies using pnpm.
+install-frontend:
+	cd frontend && pnpm install
 
 # Start the whole stack (Postgres + backend) via Docker Compose.
 # Run `make frontend` in another terminal for the Next.js dev server.
