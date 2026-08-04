@@ -25,6 +25,8 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://jidoka:jidoka@db:5432/jidoka
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-secret-for-local}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openai/gpt-4o-mini}
     depends_on:
       db:
         condition: service_healthy

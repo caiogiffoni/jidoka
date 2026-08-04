@@ -51,6 +51,26 @@ describe("ChatPanel", () => {
     expect(send).toHaveBeenCalledWith("Add a task");
   });
 
+  it("renders user and assistant messages", () => {
+    mockUseAgent.mockReturnValue({
+      messages: [
+        { role: "user", content: "Hello" },
+        { role: "assistant", content: "Hi there" },
+      ],
+      pendingDiff: null,
+      status: "idle",
+      error: null,
+      send: vi.fn(),
+      approve: vi.fn(),
+      reject: vi.fn(),
+    });
+
+    render(<ChatPanel open onOpenChange={() => {}} />);
+
+    expect(screen.getByText("Hello")).toBeInTheDocument();
+    expect(screen.getByText("Hi there")).toBeInTheDocument();
+  });
+
   it("renders a proposed diff with approve and reject buttons", async () => {
     mockUseAgent.mockReturnValue({
       messages: [
