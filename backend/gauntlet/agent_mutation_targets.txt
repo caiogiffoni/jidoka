@@ -1,0 +1,9 @@
+# Target modules for agent mutation testing, prioritized by risk.
+# agent/graph.py wires nodes, interrupts, resume routing, and the apply node.
+agent/graph.py
+# agent/routes.py translates graph events to SSE and enforces auth.
+agent/routes.py
+# agent/tools.py validates tool arguments and builds change proposals.
+agent/tools.py
+# agent/state.py carries proposed/applied changes through the graph.
+agent/state.py

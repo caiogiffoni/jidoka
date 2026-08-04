@@ -11,6 +11,8 @@ dependencies = [
     "pyjwt>=2.10.0",
     "email-validator>=2.2.0",
     "sqlmodel>=0.0.39",
+    "langgraph>=0.2.0",
+    "langchain-openai>=0.2.0",
 ]
 
 [dependency-groups]
@@ -33,7 +35,20 @@ markers = [
 ]
 
 [tool.mutmut]
-source_paths = ["main.py", "auth.py", "models.py"]
+source_paths = [
+    "main.py",
+    "auth.py",
+    "models.py",
+    "services.py",
+    "routers/health.py",
+    "routers/tasks.py",
+    "routers/projects.py",
+    "routers/work_blocks.py",
+    "agent/state.py",
+    "agent/tools.py",
+    "agent/graph.py",
+    "agent/routes.py",
+]
 pytest_add_cli_args_test_selection = ["tests/"]
 runner = "bash gauntlet/run_tests_for_mutmut.sh"
 backup = false

@@ -26,6 +26,7 @@ PSQL="docker exec jidoka-db-1 psql -U jidoka -d jidoka -c"
 - [ ] Delete project → 204; its tasks survive with `project_id: null`; minutes move to the null-project bucket.
 - [ ] Daily-enabled project → generate → one card in `todo` titled `Daily - DD-MM-YY - <project>[ - <template>]` with template description/checklist.
 - [ ] Delete task → 204; its work blocks cascade-deleted.
+- [ ] Agent HITL create_task → message → interrupt → approve → task appears in target column.
 
 ## Error paths
 
@@ -44,6 +45,9 @@ PSQL="docker exec jidoka-db-1 psql -U jidoka -d jidoka -c"
 - [ ] Work block with neither timestamps nor minutes → 422; `minutes: 0` → 422; `ended_at < started_at` → 422.
 - [ ] `daily_enabled: true` without `daily_template` → 422.
 - [ ] Second generate call same UTC day → 201 with `[]` (no duplicate card).
+- [ ] Agent rejects a diff → no task created.
+- [ ] Agent stream without auth → 401.
+- [ ] Agent receives invalid tool args (blank title / bad column) → error event, no DB write.
 - [ ] Archiving the middle card of three → remaining positions re-packed to 0, 1.
 - [ ] **Full-replace PATCH gotcha:** `PATCH /tasks/{id}` omitting `checklist`/`due_date` wipes them; `PATCH /projects/{id}` omitting `daily_template` wipes it (project silently stops generating dailies). Verify before/after via `GET`.
 
