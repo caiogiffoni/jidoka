@@ -2,11 +2,11 @@
 name: Jidoka
 description: Kanban board driven by hand or by an LLM agent - automation with a human touch.
 colors:
-  electric-violet: "oklch(0.541 0.281 293.009)"
-  electric-violet-dark: "oklch(0.606 0.25 292.717)"
-  violet-wash: "oklch(0.943 0.029 294.588)"
-  violet-ink: "oklch(0.432 0.232 292.759)"
-  ring-violet: "oklch(0.702 0.183 293.541)"
+  cord-orange: "oklch(0.62 0.22 55)"
+  cord-orange-dark: "oklch(0.66 0.20 55)"
+  orange-wash: "oklch(0.94 0.04 55)"
+  orange-ink: "oklch(0.45 0.18 55)"
+  ring-orange: "oklch(0.72 0.16 55)"
   paper-white: "oklch(1 0 0)"
   ink: "oklch(0.145 0 0)"
   machine-gray: "oklch(0.97 0 0)"
@@ -52,13 +52,13 @@ spacing:
   lg: "24px"
 components:
   button-primary:
-    backgroundColor: "{colors.electric-violet}"
+    backgroundColor: "{colors.cord-orange}"
     textColor: "oklch(0.985 0 0)"
     rounded: "{rounded.lg}"
     height: "2rem"
     padding: "0 10px"
   button-primary-hover:
-    backgroundColor: "oklch(0.541 0.281 293.009 / 80%)"
+    backgroundColor: "oklch(0.62 0.22 55 / 80%)"
   button-outline:
     backgroundColor: "{colors.paper-white}"
     textColor: "{colors.ink}"
@@ -93,15 +93,15 @@ components:
 
 Jidoka's interface is a factory line running at speed, with a human hand on the cord. Toyota's andon board is the metaphor, kept at its minimum: each column is a station marked by a small status light (sky for queued, amber for running, emerald for done) - the light, not the wall. Work moves visibly between stations, and the operator can stop, redirect, or approve anything the machine proposes. The system's confident energy comes from responsiveness - optimistic drags, streaming agent actions, cards landing live - never from decoration.
 
-The canvas is near-monochrome and high-contrast (white paper, near-black ink, quiet gray panels), which makes the three andon dots and the single Electric Violet accent read as _signals_, the way status lights read on a quiet factory floor. Electric Violet belongs to action and agency: primary buttons, focus rings, the agent's presence. It is a solid, vivid voice used sparingly - explicitly not the purple-gradient "AI magic" wash of chatbot products, an anti-reference this system rejects by name, along with Jira-style enterprise chrome.
+The canvas is near-monochrome and high-contrast (white paper, near-black ink, quiet gray panels), which makes the three andon dots and the single Cord Orange accent read as _signals_, the way status lights read on a quiet factory floor. Cord Orange belongs to action and agency: primary buttons, focus rings, the agent's presence. It is a solid, vivid voice used sparingly - explicitly not the purple-gradient "AI magic" wash of chatbot products, an anti-reference this system rejects by name, along with Jira-style enterprise chrome.
 
-Both a light and a dark theme ship as first-class citizens (class-toggled, system default); the dark theme keeps the same doctrine on near-black surfaces with the violet stepped up in lightness to hold contrast.
+Both a light and a dark theme ship as first-class citizens (class-toggled, system default); the dark theme keeps the same doctrine on near-black surfaces with the orange stepped up in lightness to hold contrast.
 
 **Key Characteristics:**
 
 - High-contrast neutral canvas; color only ever means something
 - Column status reduced to a single small dot per station; column surfaces stay neutral
-- One accent (Electric Violet) reserved for action, focus, and agent activity
+- One accent (Cord Orange) reserved for action, focus, and agent activity
 - Flat at rest; shadow and lift are responses to touch
 - Fast, tactile motion: ≤150ms transitions, 1px button press, 2° card tilt in flight
 
@@ -111,8 +111,8 @@ A near-monochrome canvas where every chromatic value is a signal with a job.
 
 ### Primary
 
-- **Electric Violet** (oklch(0.541 0.281 293.009); dark theme: oklch(0.606 0.25 292.717)): the color of action and agency. Primary buttons, focus/selection rings (as **Ring Violet**, oklch(0.702 0.183 293.541), at 50% alpha), links, and anywhere the agent is present or acting. Always solid, never a gradient.
-- **Violet Wash** (oklch(0.943 0.029 294.588)) with **Violet Ink** text (oklch(0.432 0.232 292.759)): the quiet tint pair for selected/accented surfaces that need violet identity without full saturation.
+- **Cord Orange** (oklch(0.62 0.22 55); dark theme: oklch(0.66 0.20 55)): the color of the operator's hand on the andon cord - human action and agency. Primary buttons, focus/selection rings (as **Ring Orange**, oklch(0.72 0.16 55), at 50% alpha), links, and anywhere the agent is present or acting. Always solid, never a gradient.
+- **Orange Wash** (oklch(0.94 0.04 55)) with **Orange Ink** text (oklch(0.45 0.18 55)): the quiet tint pair for selected/accented surfaces that need orange identity without full saturation.
 
 ### Secondary
 
@@ -137,7 +137,7 @@ Backlog, the column before To Do, isn't a station on the line yet - its dot is *
 
 **The Andon Rule.** Sky, amber, and emerald belong to the stations, and only as the header dot. They mark column status and nothing else - never wash a surface with them, never tint text with them, and never let a status color leak onto an action.
 
-**The One Lever Rule.** Electric Violet is the operator's lever: it appears only where a human acts (buttons, focus, selection) or where the agent does (streaming activity, proposals). If violet is on more than ~10% of the screen, something is decoration pretending to be a signal.
+**The One Lever Rule.** Cord Orange is the operator's lever: it appears only where a human acts (buttons, focus, selection) or where the agent does (streaming activity, proposals). If orange is on more than ~10% of the screen, something is decoration pretending to be a signal.
 
 ## 3. Typography
 
@@ -165,8 +165,8 @@ Flat until touched. Surfaces at rest sit on 1px rings (`ring-1` at foreground/10
 ### Shadow Vocabulary
 
 - **Rest**: none. Cards and columns at rest are perfectly flat; the hairline ring is the only edge.
-- **Hover-lift** (`box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)`): interactive surfaces under the pointer, paired with the ring darkening to foreground/20% - neutral, not violet; violet waits for commitment.
-- **In-flight** (`box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)` + `rotate: 2deg` + 1px Ring Violet at 40%): the dragged card overlay only.
+- **Hover-lift** (`box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)`): interactive surfaces under the pointer, paired with the ring darkening to foreground/20% - neutral, not orange; orange waits for commitment.
+- **In-flight** (`box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)` + `rotate: 2deg` + 1px Ring Orange at 40%): the dragged card overlay only.
 
 ### Named Rules
 
@@ -179,11 +179,11 @@ Tactile and quick: everything responds within 150ms, buttons physically press, c
 ### Buttons
 
 - **Shape:** gently rounded (0.625rem radius), 2rem tall (default), 0.875rem medium text.
-- **Primary:** Electric Violet fill, near-white text; hover dims the fill to 80% opacity.
+- **Primary:** Cord Orange fill, near-white text; hover dims the fill to 80% opacity.
 - **Outline / Ghost / Secondary:** hairline border on paper, or borderless; both hover to Machine Gray.
 - **Destructive:** Alarm Red at a 10% tint with red text; hover deepens to 20%. Never a solid red slab.
 - **Press:** `active:translate-y-px` - every button physically depresses 1px.
-- **Focus:** 3px Ring Violet at 50% alpha plus a violet border. Focus is always visible, never suppressed.
+- **Focus:** 3px Ring Orange at 50% alpha plus an orange border. Focus is always visible, never suppressed.
 - **Disabled:** 50% opacity, pointer events off.
 
 ### Cards (Task Cards)
@@ -199,13 +199,13 @@ Tactile and quick: everything responds within 150ms, buttons physically press, c
 
 - **Style:** 18rem wide, 0.875rem radius, Machine Gray panel at 50% alpha (30% in dark), borderless, 8px internal padding. The panel recedes; the cards are the content.
 - **Header:** status dot (6px circle in the station's solid color - the only color on the column), name in Ink at Title weight, plain mono count in Gray Voice pushed to the far edge. No badge pill.
-- **Drop feedback:** a 1px Ring Violet ring at 50% while a card hovers over - the one moment the column speaks violet.
+- **Drop feedback:** a 1px Ring Orange ring at 50% while a card hovers over - the one moment the column speaks orange.
 - **Empty state:** a dashed hairline slot reading "Drop tasks here" in Gray Voice - the empty state teaches the gesture.
 
 ### Inputs / Fields
 
 - **Style:** transparent background, hairline border, 0.625rem radius, 2rem tall.
-- **Focus:** border shifts to Ring Violet with a 3px violet ring at 50% - identical to button focus.
+- **Focus:** border shifts to Ring Orange with a 3px orange ring at 50% - identical to button focus.
 - **Error:** Alarm Red border with a 20% red ring (`aria-invalid`), same geometry as focus.
 - **Placeholder:** Gray Voice.
 
@@ -215,13 +215,13 @@ Tactile and quick: everything responds within 150ms, buttons physically press, c
 
 ### The Drag Overlay (signature component)
 
-The card in flight is the system's proof of physicality: rendered in a `DragOverlay` above everything, rotated 2°, in-flight shadow, Ring Violet at 40%. When the agent later moves cards itself, the same visual grammar shows the machine's hand doing what yours does.
+The card in flight is the system's proof of physicality: rendered in a `DragOverlay` above everything, rotated 2°, in-flight shadow, Ring Orange at 40%. When the agent later moves cards itself, the same visual grammar shows the machine's hand doing what yours does.
 
 ## 6. Do's and Don'ts
 
 ### Do:
 
-- **Do** keep Electric Violet solid and scarce - actions, focus, selection, agent presence, per the One Lever Rule.
+- **Do** keep Cord Orange solid and scarce - actions, focus, selection, agent presence, per the One Lever Rule.
 - **Do** keep every surface neutral; the status dot is the only place a station color appears (the Andon Rule).
 - **Do** give every interactive element the full state set: default, hover, focus-visible, active, disabled - and honest cursors (`grab`/`grabbing` on draggables).
 - **Do** keep transitions between 100–150ms with standard easing; motion conveys state, not decoration.
