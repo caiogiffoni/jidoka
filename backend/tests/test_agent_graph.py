@@ -7,9 +7,13 @@ message → tool call → interrupt with diff → resume → apply (or not).
 
 import os
 import uuid
+from typing import Any
 from unittest.mock import patch
 
 import pytest
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import AIMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
 
 from agent.graph import _default_model, build_graph
 from tests.agent_fakes import FakeToolCallingModel
@@ -130,6 +134,47 @@ class TestAgentGraphHitlFlow:
                     }
                 },
             )
+
+    def test_agent_node_prepends_system_prompt(self):
+        """The agent must prepend a system prompt before the user's messages."""
+        recorded_messages = []
+
+        class RecordingFake(BaseChatModel):
+            tool_args: dict[str, Any]
+
+            @property
+            def _llm_type(self) -> str:
+                return "recording_fake"
+
+            def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+                recorded_messages.extend(messages)
+                tool_call = {"id": "call_1", "name": "create_task", "args": self.tool_args}
+                message = AIMessage(content="", tool_calls=[tool_call])
+                generation = ChatGeneration(message=message)
+                return ChatResult(generations=[generation], llm_output={})
+
+            async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+                raise NotImplementedError
+
+            @property
+            def _identifying_params(self) -> dict[str, Any]:
+                return {"tool_args": self.tool_args}
+
+        graph = build_graph(model=RecordingFake(tool_args={"title": "Test", "column_id": "todo"}))
+        graph.invoke(
+            {"messages": [{"role": "user", "content": "Add a task"}]},
+            config={
+                "configurable": {
+                    "thread_id": str(uuid.uuid4()),
+                    "user_id": str(uuid.uuid4()),
+                }
+            },
+        )
+
+        assert len(recorded_messages) >= 2
+        assert recorded_messages[0].type == "system"
+        assert "Only ask for the task title and which column" in recorded_messages[0].content
+        assert recorded_messages[1].type == "human"
 
 
 class TestDefaultModel:

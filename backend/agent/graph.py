@@ -8,7 +8,7 @@ import os
 import uuid
 from typing import Any
 
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
@@ -42,6 +42,14 @@ def create_task_tool(
 
 # Module-level model used by the SSE endpoint. Tests patch this directly.
 model = None
+
+_SYSTEM_PROMPT = (
+    "You are a helpful kanban assistant. When the user wants to create a task, "
+    "call the create_task tool. Only ask for the task title and which column it "
+    "should go in (backlog, todo, in_progress, or done). If the user also provides "
+    "a description or checklist items, include them in the tool call. Otherwise, "
+    "do not ask for a description or checklist."
+)
 
 
 def _default_model():
@@ -98,7 +106,8 @@ def build_graph(model=None):
 
     def agent_node(state: AgentState, config: RunnableConfig) -> dict:
         llm = explicit_model if explicit_model is not None else _resolve_model(None)
-        response = llm.invoke(state["messages"])
+        messages = [SystemMessage(content=_SYSTEM_PROMPT)] + state["messages"]
+        response = llm.invoke(messages)
         return {"messages": [response]}
 
     def tool_node(state: AgentState, config: RunnableConfig) -> dict:
