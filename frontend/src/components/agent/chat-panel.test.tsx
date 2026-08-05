@@ -71,6 +71,23 @@ describe("ChatPanel", () => {
     expect(screen.getByText("Hi there")).toBeInTheDocument();
   });
 
+  it("renders Markdown bold text as strong", () => {
+    mockUseAgent.mockReturnValue({
+      messages: [{ role: "assistant", content: "Use **bold** here" }],
+      pendingDiff: null,
+      status: "idle",
+      error: null,
+      send: vi.fn(),
+      approve: vi.fn(),
+      reject: vi.fn(),
+    });
+
+    render(<ChatPanel open onOpenChange={() => {}} />);
+
+    const strong = document.querySelector("strong");
+    expect(strong).toHaveTextContent("bold");
+  });
+
   it("renders a proposed diff with approve and reject buttons", async () => {
     mockUseAgent.mockReturnValue({
       messages: [

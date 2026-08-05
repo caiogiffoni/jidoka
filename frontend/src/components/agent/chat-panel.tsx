@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { MarkdownText } from "@/components/ui/markdown-text";
 import { useAgent } from "@/hooks/use-agent";
 
 interface ChatPanelProps {
@@ -32,12 +33,12 @@ export function ChatPanel({ open, onOpenChange, onApply }: ChatPanelProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Agent</DialogTitle>
         </DialogHeader>
 
-        <div className="flex max-h-[60vh] flex-col gap-4">
+        <div className="flex max-h-[80vh] flex-col gap-4">
           <div className="flex flex-col gap-2 overflow-y-auto">
             {messages.map((msg, index) => (
               <div
@@ -48,7 +49,7 @@ export function ChatPanel({ open, onOpenChange, onApply }: ChatPanelProps) {
                     : "bg-muted self-start"
                 }`}
               >
-                {msg.content}
+                <MarkdownText text={msg.content} />
               </div>
             ))}
           </div>
