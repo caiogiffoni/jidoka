@@ -191,6 +191,7 @@ def _clean_title(text: str, column: str | None) -> str:
         )
     title = _TITLE_CLEANUP_RE.sub("", title)
     title = re.sub(r"^\s*(to|for|about)\s+", "", title, flags=re.IGNORECASE)
+    title = re.sub(r"\s+in\s*$", "", title, flags=re.IGNORECASE)
     return re.sub(r"\s+", " ", title).strip()
 
 

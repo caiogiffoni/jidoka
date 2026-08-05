@@ -16,9 +16,12 @@ from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 
 from agent.graph import (
+    _clean_title,
     _default_model,
     _detect_column,
     _extract_quoted_title,
+    _looks_like_task_request,
+    _parse_message,
     _update_draft,
     build_graph,
 )
@@ -288,3 +291,30 @@ class TestDraftExtraction:
         draft = _update_draft(draft, [{"role": "user", "content": "in_progress"}])
         assert draft["title"] == "Work on car"
         assert draft["column_id"] == "in_progress"
+
+    def test_parse_message_extracts_quoted_title_and_column(self):
+        assert _parse_message("Create 'Read docs' in todo") == {
+            "title": "Read docs",
+            "column_id": "todo",
+        }
+
+    def test_parse_message_title_only_asks_for_column_later(self):
+        assert _parse_message('can you create "Work on car"?') == {
+            "title": "Work on car"
+        }
+
+    def test_parse_message_column_only(self):
+        assert _parse_message("backlog") == {"column_id": "backlog"}
+        assert _parse_message("in_progress") == {"column_id": "in_progress"}
+
+    def test_clean_title_strips_task_filler(self):
+        assert _clean_title("Add a task to wire HITL", None) == "wire HITL"
+        assert _clean_title("Create a task Read docs in todo", "todo") == "Read docs"
+        assert _clean_title("Add a task", None) == ""
+
+    def test_looks_like_task_request(self):
+        assert _looks_like_task_request("Create a task")
+        assert _looks_like_task_request("Add 'Buy milk'")
+        assert _looks_like_task_request("make new task")
+        assert not _looks_like_task_request("Who is the president?")
+        assert not _looks_like_task_request("Move task 123 to done")
