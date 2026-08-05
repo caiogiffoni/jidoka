@@ -136,3 +136,41 @@ def test_real_llm_off_topic_is_redirected(anon_client, token):
     )
     content = _latest_message_content(events)
     assert "kanban" in content or "task" in content
+
+
+def test_real_llm_full_hitl_create_and_approve(anon_client, token):
+    """Full HITL conversation: propose a task, approve it, verify it exists."""
+    thread_id = str(uuid.uuid4())
+
+    # Turn 1: propose the task.
+    events1 = _post_message(
+        anon_client, token, thread_id, "Create a task 'Write release notes' in todo"
+    )
+    changes = _proposed_changes(events1)
+    assert len(changes) == 1
+    assert changes[0]["title"] == "Write release notes"
+    assert changes[0]["column_id"] == "todo"
+
+    # Turn 2: approve the diff.
+    response = anon_client.post(
+        "/agent/stream",
+        headers=_auth(token),
+        json={"thread_id": thread_id, "resume": {"approved": True}},
+    )
+    assert response.status_code == 200
+    events2 = _parse_sse_events(response.text)
+    apply = next((e for e in events2 if e["event"] == "apply"), None)
+    assert apply is not None
+    created = apply["data"]["created_tasks"]
+    assert len(created) == 1
+    assert created[0]["title"] == "Write release notes"
+    assert created[0]["column_id"] == "todo"
+
+    # Verify the task is visible on the board.
+    response = anon_client.get("/tasks", headers=_auth(token))
+    assert response.status_code == 200
+    tasks = response.json()
+    assert any(
+        t["title"] == "Write release notes" and t["column_id"] == "todo"
+        for t in tasks
+    )
