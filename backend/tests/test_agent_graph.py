@@ -15,7 +15,14 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 
-from agent.graph import _default_model, build_graph
+from agent.graph import (
+    _default_model,
+    _detect_column,
+    _extract_quoted_title,
+    _update_draft,
+    build_graph,
+)
+
 from tests.agent_fakes import FakeToolCallingModel
 
 
@@ -30,8 +37,10 @@ class TestAgentGraphHitlFlow:
     def test_graph_interrupts_with_proposed_diff(self):
         graph = make_graph({"title": "Wire HITL flow", "column_id": "todo"})
 
+        # Both title and column are provided, so the agent creates the proposal
+        # deterministically without calling the mocked LLM.
         result = graph.invoke(
-            {"messages": [{"role": "user", "content": "Add a task to wire HITL"}]},
+            {"messages": [{"role": "user", "content": "Add a task 'Wire HITL' to todo"}]},
             config={
                 "configurable": {
                     "thread_id": str(uuid.uuid4()),
@@ -43,7 +52,7 @@ class TestAgentGraphHitlFlow:
         interrupt_value = result["__interrupt__"][0].value
         diff = interrupt_value["diff"]
         assert len(diff.changes) == 1
-        assert diff.changes[0].title == "Wire HITL flow"
+        assert diff.changes[0].title == "Wire HITL"
         assert diff.changes[0].column_id == "todo"
 
     def test_approved_create_task_persists_to_db(self, session, test_user):
@@ -173,8 +182,8 @@ class TestAgentGraphHitlFlow:
 
         assert len(recorded_messages) >= 2
         assert recorded_messages[0].type == "system"
-        assert "Only ask for the task title and which column" in recorded_messages[0].content
-        assert recorded_messages[1].type == "human"
+        assert "focused kanban assistant" in recorded_messages[0].content
+        assert any("Add a task" in str(getattr(m, "content", "")) for m in recorded_messages)
 
 
 class TestDefaultModel:
@@ -249,3 +258,33 @@ class TestDefaultModel:
 
         assert len(captured["tools"]) == 1
         assert captured["tools"][0].name == "create_task"
+
+
+class TestDraftExtraction:
+    """Unit tests for the rule-based task-draft accumulation."""
+
+    def test_extract_quoted_title(self):
+        assert _extract_quoted_title('Create "Work on car"') == "Work on car"
+        assert _extract_quoted_title("Create 'Work on car'") == "Work on car"
+        assert _extract_quoted_title("Create Work on car") is None
+
+    def test_detect_column(self):
+        assert _detect_column("put it in todo") == "todo"
+        assert _detect_column("backlog") == "backlog"
+        assert _detect_column("in_progress") == "in_progress"
+        assert _detect_column("no column here") is None
+
+    def test_update_draft_accumulates_title_then_column(self):
+        draft = _update_draft(None, [{"role": "user", "content": "Create 'Work on car'"}])
+        assert draft["title"] == "Work on car"
+        assert draft.get("column_id") is None
+
+        draft = _update_draft(draft, [{"role": "user", "content": "todo"}])
+        assert draft["title"] == "Work on car"
+        assert draft["column_id"] == "todo"
+
+    def test_update_draft_does_not_overwrite_title_with_column_reply(self):
+        draft = {"title": "Work on car", "column_id": None}
+        draft = _update_draft(draft, [{"role": "user", "content": "in_progress"}])
+        assert draft["title"] == "Work on car"
+        assert draft["column_id"] == "in_progress"

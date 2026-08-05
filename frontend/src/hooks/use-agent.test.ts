@@ -156,6 +156,9 @@ describe("useAgent", () => {
       expect.objectContaining({ id: "t1", title: "Wire HITL flow" }),
     ]);
     expect(result.current.pendingDiff).toBeNull();
+    expect(result.current.messages).toContainEqual(
+      expect.objectContaining({ role: "assistant", content: "Created task(s): Wire HITL flow" }),
+    );
   });
 
   it("rejects a diff without applying", async () => {
@@ -170,9 +173,13 @@ describe("useAgent", () => {
         ),
       )
       .mockResolvedValueOnce(
-        new Response(makeStream(["event: done\ndata: {}\n\n"]), {
-          headers: { "content-type": "text/event-stream" },
-        }),
+        new Response(
+          makeStream([
+            'event: apply\ndata: {"created_tasks":[]}\n\n',
+            "event: done\ndata: {}\n\n",
+          ]),
+          { headers: { "content-type": "text/event-stream" } },
+        ),
       );
 
     const onApply = vi.fn();
@@ -194,8 +201,11 @@ describe("useAgent", () => {
         body: expect.stringContaining('"approved":false'),
       }),
     );
-    expect(onApply).not.toHaveBeenCalled();
+    expect(onApply).toHaveBeenCalledWith([]);
     expect(result.current.pendingDiff).toBeNull();
+    expect(result.current.messages).toContainEqual(
+      expect.objectContaining({ role: "assistant", content: "Task creation cancelled." }),
+    );
   });
 
   it("surfaces an error when the stream emits an error event", async () => {

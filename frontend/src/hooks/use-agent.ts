@@ -98,6 +98,18 @@ export function useAgent({ onApply }: UseAgentOptions = {}) {
           sawInterruptRef.current = false;
           setPendingDiff(null);
           setStatus("idle");
+          if (created.length > 0) {
+            const titles = created.map((t) => t.title).join(", ");
+            setMessages((prev) => [
+              ...prev,
+              { role: "assistant", content: `Created task(s): ${titles}` },
+            ]);
+          } else {
+            setMessages((prev) => [
+              ...prev,
+              { role: "assistant", content: "Task creation cancelled." },
+            ]);
+          }
         } else if (event === "error") {
           const message = (data as { message?: string }).message ?? "Agent error";
           sawInterruptRef.current = false;

@@ -14,8 +14,8 @@ _VALID_COLUMNS = set(ColumnId.__args__)  # type: ignore[attr-defined]
 
 def create_task(
     title: str,
+    column_id: str,
     description: str | None = None,
-    column_id: str = "todo",
     project_id: str | uuid.UUID | None = None,
     checklist: list[dict] | None = None,
 ) -> dict:

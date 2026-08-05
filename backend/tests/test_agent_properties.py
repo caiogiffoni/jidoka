@@ -62,7 +62,7 @@ class TestCreateTaskToolProperties:
     def test_blank_or_empty_title_is_rejected(self, title):
         if not title.strip():
             with pytest.raises(ValueError):
-                create_task(title=title)
+                create_task(title=title, column_id="todo")
 
     @given(column_id=st.text(min_size=1))
     @settings(

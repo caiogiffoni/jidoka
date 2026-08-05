@@ -49,10 +49,12 @@ class AgentState(TypedDict):
 
     Messages carry the conversation. Proposed changes are produced by the tool
     node. The approved flag is set when the user resumes from the interrupt.
-    Applied results record what the apply node persisted.
+    Applied results record what the apply node persisted. Draft accumulates
+    partial task details so the agent does not have to rely on the LLM's memory.
     """
 
     messages: list
     proposed_changes: list[CreateTaskChange]
     approved: bool | None
     applied_results: list[Task]
+    draft: dict | None

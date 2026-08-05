@@ -16,7 +16,7 @@ class TestCreateTaskTool:
     """create_task is the only tool in the first HITL iteration."""
 
     def test_returns_create_task_change(self):
-        result = create_task(title="Wire HITL flow")
+        result = create_task(title="Wire HITL flow", column_id="todo")
         assert result["type"] == "create_task"
         assert result["title"] == "Wire HITL flow"
         assert result["column_id"] == "todo"
@@ -45,7 +45,7 @@ class TestCreateTaskTool:
 
     def test_blank_title_is_rejected(self):
         with pytest.raises(ValueError):
-            create_task(title="   ")
+            create_task(title="   ", column_id="todo")
 
     def test_no_database_side_effect(self, session, test_user):
         """The tool must never write to the DB. The implementation may import
@@ -57,13 +57,14 @@ class TestCreateTaskTool:
         from models import Task
 
         before = session.exec(select(Task)).all()
-        create_task(title="Phantom task")
+        create_task(title="Phantom task", column_id="todo")
         after = session.exec(select(Task)).all()
         assert before == after
 
     def test_blank_checklist_items_are_stripped(self):
         result = create_task(
             title="Wire HITL flow",
+            column_id="todo",
             checklist=[
                 {"text": "build graph", "checked": False},
                 {"text": "", "checked": False},
@@ -73,5 +74,5 @@ class TestCreateTaskTool:
         assert result["checklist"] == [ChecklistItem(text="build graph", checked=False)]
 
     def test_none_description_becomes_none(self):
-        result = create_task(title="No description", description=None)
+        result = create_task(title="No description", column_id="todo", description=None)
         assert result["description"] is None

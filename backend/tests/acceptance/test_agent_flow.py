@@ -55,12 +55,12 @@ def test_agent_create_task_hitl_flow(anon_client):
 
     thread_id = str(uuid.uuid4())
 
-    # Patch the LLM so the graph proposes a known task
-    with patch("agent.graph.model", FakeToolCallingModel(tool_args={"title": "Wire HITL flow", "column_id": "todo"})):
+    # Both title and column are provided, so the graph proposes deterministically.
+    with patch("agent.graph.model", FakeToolCallingModel(tool_args={"title": "Wire HITL", "column_id": "todo"})):
         response = anon_client.post(
             "/agent/stream",
             headers=_auth(token),
-            json={"thread_id": thread_id, "message": "Add a task to wire HITL"},
+            json={"thread_id": thread_id, "message": "Add a task 'Wire HITL' to todo"},
         )
 
     assert response.status_code == 200
@@ -69,11 +69,11 @@ def test_agent_create_task_hitl_flow(anon_client):
     assert interrupt is not None
     changes = interrupt["data"]["changes"]
     assert len(changes) == 1
-    assert changes[0]["title"] == "Wire HITL flow"
+    assert changes[0]["title"] == "Wire HITL"
     assert changes[0]["column_id"] == "todo"
 
     # Approve the diff
-    with patch("agent.graph.model", FakeToolCallingModel(tool_args={"title": "Wire HITL flow", "column_id": "todo"})):
+    with patch("agent.graph.model", FakeToolCallingModel(tool_args={"title": "Wire HITL", "column_id": "todo"})):
         response = anon_client.post(
             "/agent/stream",
             headers=_auth(token),
@@ -86,14 +86,14 @@ def test_agent_create_task_hitl_flow(anon_client):
     assert apply is not None
     created = apply["data"]["created_tasks"]
     assert len(created) == 1
-    assert created[0]["title"] == "Wire HITL flow"
+    assert created[0]["title"] == "Wire HITL"
     assert created[0]["column_id"] == "todo"
 
     # Verify the task is visible on the board
     response = anon_client.get("/tasks", headers=_auth(token))
     assert response.status_code == 200
     tasks = response.json()
-    assert any(t["title"] == "Wire HITL flow" and t["column_id"] == "todo" for t in tasks)
+    assert any(t["title"] == "Wire HITL" and t["column_id"] == "todo" for t in tasks)
 
 
 @pytest.mark.critical()
