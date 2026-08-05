@@ -422,3 +422,7 @@ to work on next.
     enhancement after the initial JWT cookie auth is wired; add token rotation,
     a `/refresh` endpoint, and a revocation table when multi-user/session
     management becomes a priority.
+16. **Agent chat persistence** — persist agent chat history and `thread_id`
+    across page reloads. Options: `localStorage` for same-browser quick win, or
+    a backend `threads`/`messages` table for cross-device persistence. Not yet
+    started.
