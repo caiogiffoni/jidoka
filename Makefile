@@ -36,12 +36,18 @@ frontend:
 # ---------------------------------------------------------------------------
 
 # Full pytest suite against the local Postgres dev DB (must be on :5432).
+# Excludes LLM tests by default.
 test:
 	cd backend && uv run pytest tests/ -v
 
 # pytest with terminal + HTML coverage report.
+# Excludes LLM tests by default.
 test-coverage:
 	cd backend && uv run pytest tests/ --cov=. --cov-report=term-missing --cov-report=html
+
+# Run tests that exercise the real LLM via OpenRouter (requires OPENROUTER_API_KEY).
+test-llm:
+	cd backend && uv run pytest tests/llm/ -v -m llm
 
 # ---------------------------------------------------------------------------
 # Frontend tests

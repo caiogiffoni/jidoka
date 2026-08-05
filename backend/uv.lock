@@ -55,6 +55,7 @@ dev = [
     { name = "mutmut" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "python-dotenv" },
     { name = "radon" },
 ]
 
@@ -78,6 +79,7 @@ dev = [
     { name = "mutmut", specifier = ">=3.3.0" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "radon", specifier = ">=6.0.1" },
 ]
 

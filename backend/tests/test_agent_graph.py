@@ -316,5 +316,7 @@ class TestDraftExtraction:
         assert _looks_like_task_request("Create a task")
         assert _looks_like_task_request("Add 'Buy milk'")
         assert _looks_like_task_request("make new task")
+        assert _looks_like_task_request("todo")
+        assert _looks_like_task_request("in_progress")
         assert not _looks_like_task_request("Who is the president?")
         assert not _looks_like_task_request("Move task 123 to done")

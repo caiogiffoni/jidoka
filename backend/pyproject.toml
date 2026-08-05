@@ -23,16 +23,19 @@ dev = [
     "mutmut>=3.3.0",
     "pytest>=9.1.1",
     "pytest-cov>=7.0.0",
+    "python-dotenv>=1.0.0",
     "radon>=6.0.1",
 ]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+addopts = "-m 'not llm'"
 markers = [
     "critical: highest-risk API-consumer scenarios",
     "standard: normal API-consumer scenarios",
     "edge: boundary and unusual API-consumer scenarios",
+    "llm: tests that call external LLM APIs (excluded by default)",
 ]
 
 [tool.mutmut]

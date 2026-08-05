@@ -179,6 +179,8 @@ def _extract_latest_user_text(messages: list) -> str:
 
 def _looks_like_task_request(text: str) -> bool:
     """Return True if the user seems to be asking to create a task."""
+    if text.lower().strip() in _VALID_COLUMNS:
+        return True
     return bool(_TASK_REQUEST_RE.search(text))
 
 
@@ -274,6 +276,20 @@ def build_graph(model=None):
         latest_text = _extract_latest_user_text(state["messages"])
         latest_parsed = _parse_message(latest_text)
 
+        # If we already knew one piece and the user just supplied the missing one,
+        # call the tool directly. This must run before the single-piece branches
+        # below so a bare column reply ("todo", "backlog") completes a pending
+        # draft instead of asking for the title again.
+        if (
+            draft.get("title")
+            and draft.get("column_id")
+            and (had_title_before or had_column_before)
+        ):
+            response = _task_tool_call_message(
+                draft, draft["title"], draft["column_id"]
+            )
+            return {"messages": [response], "draft": draft}
+
         # Deterministic handling for common single-intent task requests. This avoids
         # small-model hallucinations like proposing a column that was never given.
         if _looks_like_task_request(latest_text):
@@ -310,19 +326,6 @@ def build_graph(model=None):
                     ],
                     "draft": draft,
                 }
-
-        # If we already knew one piece and the user just supplied the missing one,
-        # call the tool directly. This avoids instruction-following loops with
-        # small models on the second turn.
-        if (
-            draft.get("title")
-            and draft.get("column_id")
-            and (had_title_before or had_column_before)
-        ):
-            response = _task_tool_call_message(
-                draft, draft["title"], draft["column_id"]
-            )
-            return {"messages": [response], "draft": draft}
 
         # Fall back to the LLM for off-topic handling, ambiguous input, or when
         # the user did not provide a clear title or column.
