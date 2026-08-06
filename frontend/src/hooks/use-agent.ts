@@ -10,12 +10,15 @@ interface Message {
 }
 
 interface Change {
-  type: "create_task";
+  type: "create_task" | "move_task";
   title: string;
-  column_id: string;
+  column_id?: string;
   description?: string;
   project_id?: string;
   checklist?: { text: string; checked: boolean }[];
+  from_column_id?: string;
+  to_column_id?: string;
+  task_id?: string;
 }
 
 interface PendingDiff {
@@ -93,23 +96,29 @@ export function useAgent({ onApply }: UseAgentOptions = {}) {
             setMessages((prev) => [...prev, { role: "assistant", content: msg.content }]);
           }
         } else if (event === "apply") {
-          const created = (data as { created_tasks?: AppliedTask[] }).created_tasks ?? [];
-          onApply?.(created);
+          const { created_tasks: created = [], moved_tasks: moved = [] } = data as {
+            created_tasks?: AppliedTask[];
+            moved_tasks?: AppliedTask[];
+          };
+          onApply?.([...created, ...moved]);
           sawInterruptRef.current = false;
           setPendingDiff(null);
           setStatus("idle");
+          const formatTasks = (tasks: AppliedTask[]) =>
+            tasks
+              .map((t) => t.title || `task ${t.id.slice(0, 8)}`)
+              .filter(Boolean)
+              .join(", ") || `${tasks.length} task(s)`;
+
+          const parts: string[] = [];
           if (created.length > 0) {
-            const titles = created.map((t) => t.title).join(", ");
-            setMessages((prev) => [
-              ...prev,
-              { role: "assistant", content: `Created task(s): ${titles}` },
-            ]);
-          } else {
-            setMessages((prev) => [
-              ...prev,
-              { role: "assistant", content: "Task creation cancelled." },
-            ]);
+            parts.push(`Created: ${formatTasks(created)}`);
           }
+          if (moved.length > 0) {
+            parts.push(`Moved: ${formatTasks(moved)}`);
+          }
+          const content = parts.length > 0 ? parts.join(". ") : "Changes cancelled.";
+          setMessages((prev) => [...prev, { role: "assistant", content: content }]);
         } else if (event === "error") {
           const message = (data as { message?: string }).message ?? "Agent error";
           sawInterruptRef.current = false;
