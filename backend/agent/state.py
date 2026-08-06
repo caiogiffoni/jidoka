@@ -5,7 +5,7 @@ and the frontend diff approval UI.
 """
 
 import uuid
-from typing import Annotated, Literal, TypedDict
+from typing import Annotated, Literal, TypedDict, Union
 
 from langgraph.graph.message import add_messages
 from pydantic import model_validator
@@ -33,16 +33,38 @@ class CreateTaskChange(SQLModel):
         return self
 
 
+class MoveTaskChange(SQLModel):
+    """A single proposed move_task change presented to the user for approval."""
+
+    type: Literal["move_task"] = "move_task"
+    task_id: uuid.UUID
+    title: str
+    from_column_id: Literal["backlog", "todo", "in_progress", "done"]
+    to_column_id: Literal["backlog", "todo", "in_progress", "done"]
+    position: int | None = None
+
+    @model_validator(mode="after")
+    def validate(self) -> "MoveTaskChange":
+        self.title = self.title.strip()
+        if self.position is not None and self.position < 0:
+            raise ValueError("position cannot be negative")
+        return self
+
+
+BoardChange = Union[CreateTaskChange, MoveTaskChange]
+
+
 class ProposedDiff(SQLModel):
     """A bundle of changes shown to the user in the approval interrupt."""
 
-    changes: list[CreateTaskChange] = Field(default_factory=list)
+    changes: list[BoardChange] = Field(default_factory=list)
 
 
 class AppliedResult(SQLModel):
     """The result of applying an approved diff."""
 
     created_tasks: list[Task] = Field(default_factory=list)
+    moved_tasks: list[Task] = Field(default_factory=list)
 
 
 class AgentState(TypedDict):
@@ -55,7 +77,10 @@ class AgentState(TypedDict):
     """
 
     messages: Annotated[list, add_messages]
-    proposed_changes: list[CreateTaskChange]
+    proposed_changes: list[BoardChange]
     approved: bool | None
-    applied_results: list[Task]
+    # Applied results are stored as plain dicts to avoid SQLAlchemy object
+    # serialization issues when LangGraph checkpoints the state.
+    applied_results: list[dict]
+    applied_moved_results: list[dict]
     draft: dict | None

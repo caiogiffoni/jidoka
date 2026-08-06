@@ -67,8 +67,19 @@ def _translate_chunk(chunk: dict) -> list[tuple[str, Any]]:
             # we reached the propose node.
             pass
         elif node == "apply":
-            results = update.get("applied_results", [])
-            events.append(("apply", {"created_tasks": [t.model_dump() for t in results]}))
+            # apply_node already serializes results to plain dicts so the
+            # checkpoint does not have to handle SQLAlchemy objects.
+            created = update.get("applied_results", [])
+            moved = update.get("applied_moved_results", [])
+            events.append(
+                (
+                    "apply",
+                    {
+                        "created_tasks": list(created),
+                        "moved_tasks": list(moved),
+                    },
+                )
+            )
         elif node == "__interrupt__":
             interrupt_value = update[0] if isinstance(update, (list, tuple)) else update
             if hasattr(interrupt_value, "value"):

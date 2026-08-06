@@ -1,19 +1,20 @@
 """Unit tests for the agent's tools.
 
-Tools must propose changes, not apply them. These tests assert that calling a
-tool returns a structured change dict and never touches the database.
+Tools must propose changes (for mutations) or return query commands (for reads),
+not apply them. These tests assert that calling a tool returns a structured
+result and never touches the database.
 """
 
 import uuid
 
 import pytest
 
-from agent.tools import create_task
+from agent.tools import create_task, get_task, list_projects, list_tasks, move_task
 from models import ChecklistItem
 
 
 class TestCreateTaskTool:
-    """create_task is the only tool in the first HITL iteration."""
+    """create_task proposes a new task."""
 
     def test_returns_create_task_change(self):
         result = create_task(title="Wire HITL flow", column_id="todo")
@@ -48,10 +49,7 @@ class TestCreateTaskTool:
             create_task(title="   ", column_id="todo")
 
     def test_no_database_side_effect(self, session, test_user):
-        """The tool must never write to the DB. The implementation may import
-        the session type, but calling create_task must leave task count
-        unchanged.
-        """
+        """The tool must never write to the DB."""
         from sqlmodel import select
 
         from models import Task
@@ -76,3 +74,68 @@ class TestCreateTaskTool:
     def test_none_description_becomes_none(self):
         result = create_task(title="No description", column_id="todo", description=None)
         assert result["description"] is None
+
+
+class TestMoveTaskTool:
+    """move_task proposes a task movement."""
+
+    def test_returns_move_task_change(self):
+        task_id = str(uuid.uuid4())
+        result = move_task(task_id=task_id, column_id="todo", position=0)
+        assert result["type"] == "move_task"
+        assert result["task_id"] == uuid.UUID(task_id)
+        assert result["column_id"] == "todo"
+        assert result["position"] == 0
+
+    def test_position_is_optional(self):
+        task_id = str(uuid.uuid4())
+        result = move_task(task_id=task_id, column_id="done")
+        assert result["position"] is None
+
+    def test_invalid_column_is_rejected(self):
+        with pytest.raises(ValueError):
+            move_task(task_id=str(uuid.uuid4()), column_id="invalid")
+
+    def test_negative_position_is_rejected(self):
+        with pytest.raises(ValueError):
+            move_task(task_id=str(uuid.uuid4()), column_id="todo", position=-1)
+
+    def test_malformed_task_id_is_rejected(self):
+        with pytest.raises(ValueError):
+            move_task(task_id="not-a-uuid", column_id="todo")
+
+
+class TestListTasksTool:
+    """list_tasks returns a query command for the graph's tool_node."""
+
+    def test_returns_filter_dict(self):
+        result = list_tasks(column_id="backlog", include_archived=True)
+        assert result == {"column_id": "backlog", "include_archived": True}
+
+    def test_defaults_are_valid(self):
+        result = list_tasks()
+        assert result == {"column_id": None, "include_archived": False}
+
+    def test_invalid_column_is_rejected(self):
+        with pytest.raises(ValueError):
+            list_tasks(column_id="invalid")
+
+
+class TestListProjectsTool:
+    """list_projects returns a query command for the graph's tool_node."""
+
+    def test_returns_empty_command(self):
+        assert list_projects() == {}
+
+
+class TestGetTaskTool:
+    """get_task returns a query command for the graph's tool_node."""
+
+    def test_returns_task_id_command(self):
+        task_id = str(uuid.uuid4())
+        result = get_task(task_id=task_id)
+        assert result == {"task_id": uuid.UUID(task_id)}
+
+    def test_malformed_task_id_is_rejected(self):
+        with pytest.raises(ValueError):
+            get_task(task_id="not-a-uuid")

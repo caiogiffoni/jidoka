@@ -25,6 +25,41 @@ def make_graph(tool_args):
     return build_graph(model=model)
 
 
+class QueueFakeModel(BaseChatModel):
+    """A fake LLM that returns queued AIMessages in order."""
+
+    responses: list[AIMessage]
+
+    @property
+    def _llm_type(self) -> str:
+        return "queue_fake"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        if not self.responses:
+            raise RuntimeError("QueueFakeModel ran out of responses")
+        message = self.responses.pop(0)
+        generation = ChatGeneration(message=message)
+        return ChatResult(generations=[generation], llm_output={})
+
+    async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+        raise NotImplementedError
+
+    @property
+    def _identifying_params(self) -> dict[str, Any]:
+        return {"responses_left": len(self.responses)}
+
+
+def _assistant(content: str) -> AIMessage:
+    return AIMessage(content=content)
+
+
+def _tool_call(name: str, args: dict) -> AIMessage:
+    return AIMessage(
+        content="",
+        tool_calls=[{"id": "call_1", "name": name, "args": args}],
+    )
+
+
 class TestAgentGraphHitlFlow:
     """End-to-end graph behavior with a deterministic LLM."""
 
@@ -73,9 +108,9 @@ class TestAgentGraphHitlFlow:
 
         applied = final_state["applied_results"]
         assert len(applied) == 1
-        assert applied[0].title == "Wire HITL flow"
-        assert applied[0].column_id == "todo"
-        assert applied[0].user_id == test_user.id
+        assert applied[0]["title"] == "Wire HITL flow"
+        assert applied[0]["column_id"] == "todo"
+        assert applied[0]["user_id"] == str(test_user.id)
 
     def test_rejected_create_task_leaves_db_unchanged(self, session, test_user):
         from sqlmodel import select
@@ -261,6 +296,88 @@ class TestAgentGraphHitlFlow:
         assert any("create projects" in c and "Which column" in c for c in turn2_contents)
         assert any(c == "backlog" for c in turn2_contents)
 
+    def test_read_tool_loops_back_to_agent(self, session, test_user):
+        """A read tool (list_tasks) executes immediately and returns a ToolMessage
+        so the agent can answer with the fetched data, without requiring approval.
+        """
+        from services import create_task_service
+        from models import TaskCreate
+
+        create_task_service(session, test_user.id, TaskCreate(title="Read docs", column_id="todo"))
+
+        graph = build_graph(
+            model=QueueFakeModel(
+                responses=[
+                    _tool_call("list_tasks", {"column_id": "todo"}),
+                    _assistant("You have 1 task in todo: Read docs"),
+                ]
+            )
+        )
+        result = graph.invoke(
+            {"messages": [{"role": "user", "content": "What do I have in todo?"}]},
+            config={
+                "configurable": {
+                    "thread_id": str(uuid.uuid4()),
+                    "user_id": str(test_user.id),
+                    "session": session,
+                }
+            },
+        )
+
+        # No interrupt means no approval was requested.
+        assert "__interrupt__" not in result or result.get("__interrupt__") is None
+        last_message = result["messages"][-1]
+        assert "Read docs" in str(getattr(last_message, "content", ""))
+
+    def test_move_task_goes_through_hitl_approval(self, session, test_user):
+        """The agent can list tasks, pick one, propose a move, and apply it on approval."""
+        from langgraph.types import Command
+        from services import create_task_service
+        from models import TaskCreate
+
+        task = create_task_service(
+            session, test_user.id, TaskCreate(title="Wire HITL", column_id="todo")
+        )
+        thread_id = str(uuid.uuid4())
+        config = {
+            "configurable": {
+                "thread_id": thread_id,
+                "user_id": str(test_user.id),
+                "session": session,
+            }
+        }
+
+        graph = build_graph(
+            model=QueueFakeModel(
+                responses=[
+                    _tool_call("list_tasks", {"column_id": "todo"}),
+                    _tool_call("move_task", {"task_id": str(task.id), "column_id": "done"}),
+                ]
+            )
+        )
+
+        # First turn: list tasks, then agent decides to move one.
+        result = graph.invoke(
+            {"messages": [{"role": "user", "content": "Move the todo task to done"}]},
+            config=config,
+        )
+
+        interrupt_value = result["__interrupt__"][0].value
+        diff = interrupt_value["diff"]
+        assert len(diff.changes) == 1
+        move_change = diff.changes[0]
+        assert move_change.type == "move_task"
+        assert move_change.title == "Wire HITL"
+        assert move_change.from_column_id == "todo"
+        assert move_change.to_column_id == "done"
+
+        # Approve the move.
+        final_state = graph.invoke(Command(resume={"approved": True}), config=config)
+        moved = final_state["applied_moved_results"]
+        assert len(moved) == 1
+        assert moved[0]["id"] == str(task.id)
+        assert moved[0]["column_id"] == "done"
+
 
 class TestDefaultModel:
     """Coverage for the production LLM factory that mutmut otherwise flags."""
@@ -318,7 +435,7 @@ class TestDefaultModel:
         assert captured["kwargs"]["model"] == "deepseek/deepseek-chat"
         assert captured["kwargs"]["base_url"] == "https://openrouter.ai/api/v1"
 
-    def test_default_model_binds_create_task_tool(self):
+    def test_default_model_binds_all_agent_tools(self):
         captured = {}
 
         def mock_chat(**kwargs):
@@ -332,5 +449,5 @@ class TestDefaultModel:
             with patch("agent.graph.ChatOpenAI", mock_chat):
                 _default_model()
 
-        assert len(captured["tools"]) == 1
-        assert captured["tools"][0].name == "create_task"
+        names = {t.name for t in captured["tools"]}
+        assert names == {"create_task", "move_task", "list_tasks", "list_projects", "get_task"}

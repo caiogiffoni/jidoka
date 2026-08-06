@@ -98,9 +98,9 @@ class TestApprovedChangeProperties:
         final_state = graph.invoke(Command(resume={"approved": True}), config=config)
         applied = final_state["applied_results"]
         assert len(applied) == 1
-        assert applied[0].title == title.strip()
-        assert applied[0].column_id == column_id
-        assert applied[0].user_id == test_user.id
+        assert applied[0]["title"] == title.strip()
+        assert applied[0]["column_id"] == column_id
+        assert applied[0]["user_id"] == str(test_user.id)
 
 
 class TestRejectedChangeProperties:
