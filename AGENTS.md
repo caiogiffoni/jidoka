@@ -136,6 +136,14 @@ cd frontend && npx tsc --noEmit    # typecheck
 
 ## 5. Testing strategy
 
+### Test principles
+
+- Every new function gets a test. Bug fixes get a regression test.
+- Mock external I/O (API, DB, filesystem) with named fake classes, not inline
+  stubs.
+- Tests must be F.I.R.S.T: fast, independent, repeatable, self-validating,
+  timely.
+
 ### Backend tests
 
 - Framework: pytest.
@@ -217,6 +225,85 @@ cd frontend && pnpm test
 - Use `@/` path alias for imports from `src/`.
 - Tailwind classes should respect the design tokens in `globals.css`; design
   details live in `DESIGN.md`.
+
+### Clean Code and SOLID guidelines
+
+Write code that is easy to read, test, and change. Follow Clean Code and SOLID
+principles pragmatically — never as an excuse to over-engineer or refactor
+unrelated code.
+
+**Code style**
+
+- Functions: aim for 4–20 lines. Split if longer.
+- Files: keep under 500 lines. Split by responsibility.
+- One thing per function, one responsibility per module (SRP).
+- Names: specific and unique. Avoid generic names like `data`, `handler`,
+  `Manager`. Prefer names that return fewer than five grep hits in the codebase.
+- Types: explicit. Avoid `any`, untyped `Dict`, and untyped functions.
+- No code duplication. Extract shared logic into a function or module.
+- Early returns over nested `if`s. Max two levels of indentation.
+- Exception messages must include the offending value and expected shape.
+- Avoid magic strings and numbers. Reuse constants and enums (e.g., column IDs).
+- Leave the code cleaner than you found it within the scope of your change, but
+  do not opportunistically refactor files you are not touching.
+
+**SOLID**
+
+- **Single Responsibility Principle (S):** each module, class, and function
+  should have one reason to change. Keep DB logic in services, HTTP logic in
+  routers, LLM tool schemas in `tools.py`, and graph orchestration in
+  `graph.py`.
+- **Open/Closed Principle (O):** extend behavior by adding new types or tools,
+  not by editing existing flows. For example, new agent mutations should add a
+  new `BoardChange` subclass and a matching tool rather than special-casing
+  inside `apply_node`.
+- **Liskov Substitution Principle (L):** avoid deep inheritance hierarchies.
+  Prefer Pydantic/SQLModel composition and discriminated unions over subclassing
+  for behavior variation.
+- **Interface Segregation Principle (I):** keep request/response models and
+  function signatures focused. Do not force callers to provide fields they do
+  not need.
+- **Dependency Inversion Principle (D):** depend on abstractions where it makes
+  testing or swapping implementations easier. In the backend, services are
+  currently concrete functions, which is acceptable for this codebase size;
+  introduce protocols or injectable interfaces only when a clear benefit
+  outweighs the added indirection.
+
+**Comments**
+
+- Keep existing comments on refactor — they carry intent and provenance.
+- Write WHY, not WHAT. Skip `// increment counter` above `i++`.
+- Docstrings on public functions: intent plus one usage example.
+- Reference issue numbers / commit SHAs when a line exists because of a specific
+  bug or upstream constraint.
+
+**Dependencies**
+
+- Inject dependencies through constructor/parameter, not global/import.
+- Wrap third-party libraries behind a thin interface owned by this project.
+
+**Structure**
+
+- Follow the framework's convention (FastAPI/SQLModel in the backend, Next.js
+  App Router in the frontend).
+- Prefer small focused modules over god files.
+- Keep related code together and unrelated code apart. Match the existing
+  feature-based directory layout.
+
+**Formatting**
+
+- Use the project's configured formatter and linter:
+  - Backend: `ruff format`, `ruff check`, and `mypy` (via `uv run`).
+  - Frontend: `prettier` and `eslint` (via `pnpm lint`).
+- Do not discuss style beyond what the formatter enforces.
+
+**Logging**
+
+- Structured JSON when logging for debugging / observability.
+- Plain text only for user-facing CLI output.
+
+**Balance.** These principles are guidelines, not rules. A minimal, tested,
+obvious change beats a "perfectly" abstracted one that touches ten files.
 
 ---
 
