@@ -174,6 +174,12 @@ export async function generateDailyTasks(): Promise<{ created: number }> {
   const res = await apiFetch(`${BACKEND_URL}/projects/daily-tasks/generate`, {
     method: "POST",
   });
+  if (res.status === 401) {
+    // Expired or otherwise invalid session: force re-authentication rather
+    // than leaving the user on a broken page where every mutation 401s.
+    cookieStore.delete(AUTH_COOKIE);
+    redirect("/login");
+  }
   if (!res.ok) {
     throw new Error(`POST /projects/daily-tasks/generate failed: ${res.status}`);
   }
