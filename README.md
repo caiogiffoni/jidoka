@@ -20,9 +20,9 @@ The name comes from the Toyota principle _jidoka_: automation with a human touch
 | Layer     | Choice                                                                                         |
 | --------- | ---------------------------------------------------------------------------------------------- |
 | Frontend  | Next.js 16 (App Router), TypeScript, Tailwind v4, shadcn/ui, dnd-kit                           |
-| Agent     | Python, FastAPI, LangGraph (checkpointed state machine, `interrupt()` for approval) — planned |
+| Agent     | Python, FastAPI, LangGraph (checkpointed state machine, `interrupt()` for approval) — backend routes/graph live, frontend chat panel mounted on `/board` |
 | Data      | Postgres + pgvector                                                                            |
-| Streaming | SSE from FastAPI, consumed via the Vercel AI SDK — planned                                     |
+| Streaming | SSE from FastAPI, consumed via a custom hook — backend endpoint live at `/agent/stream`, frontend `useAgent` hook built |
 | Infra     | Docker Compose                                                                                 |
 
 The agent will be an explicit LangGraph state machine because the feature's control flow _is_ the graph: an agent ↔ tools loop, an interrupt for approval, and checkpointed state resumable per board.
@@ -83,11 +83,16 @@ A pomodoro timer lives in the board header: the classic work / break / long-brea
 
 A projects + weekly time dashboard lives at `/` (the kanban board moved to `/board`): create projects, each with an optional Markdown description, and see the last 7 days of focus time as a stacked bar chart broken down by day and by project, with a "Not defined" bucket for tasks with no project. Each project row also shows its linked tasks' counts by board column (To Do / In Progress / Done). A task can link to a project at creation via the "Add task" dialog, or be reassigned later from the task detail dialog's edit mode. That dialog also renders a task's description as Markdown, shows the project it's linked to and the total time logged against it, and supports manual minutes entry independent of the pomodoro timer.
 
+Routes are `/` (dashboard), `/board` (kanban), `/login`, and `/register`. Auth redirects unauthenticated users to `/login`; successful login/register sends them to `/board`.
+
+The HITL agent is wired end-to-end: the backend has a LangGraph graph (`backend/agent/graph.py`), tools, state, and an SSE endpoint at `POST /agent/stream` (`backend/agent/routes.py`). The frontend has a `ChatPanel` component (`frontend/src/components/agent/chat-panel.tsx`) and a `useAgent` hook (`frontend/src/hooks/use-agent.ts`) that consumes the SSE stream and surfaces approve/reject buttons for proposed changes. A robot icon in the `/board` header opens the chat dialog; after approved changes are applied, the board refreshes to show the new tasks.
+
 Any project can opt into daily tasks via a "Generate a daily task" checkbox, available both when creating the project and later from its edit dialog. Checking it opens a popup that looks just like the real "Add task" dialog - Title, Description, Checklist, even Project and Column shown for visual consistency, though the latter two are fixed (a generated card always belongs to this project and always lands in To Do). Title is optional too: the generated card is always named "Daily - DD-MM-YY - \<project\>", with the template's title appended only if you gave it one, not replacing it. "Save template" saves it back into the project's own form rather than the board, so nothing shows up immediately. Once a day, that named card is generated in To Do with the template's description and checklist, for every opted-in project - idempotent per UTC day, so it's safe to trigger more than once. The trigger currently fires on first app load per browser-local day; it can be moved to the login/session-start event now that auth is implemented.
 
 What's next:
 
-- **Chat agent + HITL approval** - an agent with tools (`create_task`, `move_task`, `breakdown_task`, `prioritize_backlog`, `search_tasks`) proposes changes as a diff; execution pauses until you approve, edit, or reject, and only then applies them to the board. Paste-to-tickets (syllabus/project brief → structured extraction → same propose → approve flow) ships with it.
+- **Paste-to-tickets** - syllabus/project brief → structured extraction → same propose → approve flow, reusing the existing `create_task` tool and `ChatPanel`.
+- **More agent tools** - `move_task`, `breakdown_task`, `prioritize_backlog`, and `search_tasks` beyond the current `create_task`.
 - **Semantic search** over cards via pgvector embeddings.
 - **Tracing and evals** - Langfuse tracing on every agent run, plus a pytest eval suite asserting correct tool selection and arguments. _(Results will be published here.)_
 
