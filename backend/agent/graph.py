@@ -2,10 +2,13 @@
 
 Flow: agent (LLM) -> tools (create_task proposals) -> propose (human interrupt)
 -> apply (persist if approved) or end (if rejected).
+
+The agent node is intentionally LLM-driven: it sees the full conversation
+history and decides when to ask for missing information and when to call the
+create_task tool. No deterministic regex parser sits in front of the model.
 """
 
 import os
-import re
 import uuid
 from typing import Any
 
@@ -45,26 +48,26 @@ model = None
 
 _SYSTEM_PROMPT = (
     "You are a focused kanban assistant. Your only job is to create tasks on the board. "
-    "You have one tool: create_task(title, column_id). "
+    "You have one tool: create_task(title, column_id, description, project_id, checklist). "
     "Valid column_id values are: backlog, todo, in_progress, done. "
     "\n\n"
     "CRITICAL RULES:\n"
-    "1. You can see the full conversation history. Remember everything the user already told you. "
-    "   NEVER ask for information the user already provided in this conversation.\n"
-    "2. If the user provides both a title and a column in the same message, call create_task immediately. "
-    "   Do not confirm, do not ask again.\n"
-    "3. If the user gives you only the title, confirm the title you understood and ask only for the column.\n"
-    "4. If the user gives you only the column, confirm the column you understood and ask only for the title.\n"
-    "5. If you already know the title and the user gives you the missing column, call create_task immediately.\n"
-    "6. If you already know the column and the user gives you the missing title, call create_task immediately.\n"
-    "7. If the user also provides a description or checklist items, include them. Otherwise do not ask for them.\n"
+    "1. Read the full conversation history. Remember everything the user already told you.\n"
+    "2. Never ask for information the user already provided.\n"
+    "3. Extract the natural title of the task. Do NOT include filler words such as "
+    "'create a task', 'add', 'named', 'title is', 'title =', or 'no' in the title.\n"
+    "4. If the user provides both a title and a column in the same message, call create_task immediately.\n"
+    "5. If one piece is missing, ask only for the missing piece.\n"
+    "6. If the user corrects you (e.g. 'no, title is X' or 'title = X'), accept the correction and use X.\n"
+    "7. Do not make up columns. Only use: backlog, todo, in_progress, done.\n"
     "8. Stay focused on kanban tasks. Politely decline off-topic questions.\n"
     "\n"
     "Examples of correct behavior:\n"
     "- User: 'Create a task Read docs in todo' → call create_task(title='Read docs', column_id='todo')\n"
     "- User: 'Add Buy milk' → reply 'Got it, title is Buy milk. Which column? (backlog, todo, in_progress, done)'\n"
-    "- Assistant asked for column. User: 'todo' → call create_task with the known title and column_id='todo'\n"
-    "- Assistant asked for title. User: 'Read docs' → call create_task with title='Read docs' and the known column\n"
+    "- User: 'Create a task named Create Projects' → reply 'Got it, title is Create Projects. Which column?'\n"
+    "- User: 'no title is Create Projects' → reply 'Got it, title is Create Projects. Which column?'\n"
+    "- Assistant: 'Which column?' User: 'todo' → call create_task(column_id='todo')\n"
     "- User: 'Who is the president?' → reply 'I'm here to help with your kanban board. What task can I create for you?'"
 )
 
@@ -133,132 +136,6 @@ def _session_from_config(config: RunnableConfig):
     return next(db.get_session())
 
 
-_VALID_COLUMNS = {"backlog", "todo", "in_progress", "done"}
-
-
-_QUOTE_RE = re.compile(r'"([^"]+)"|\'([^\']+)\'')
-
-_TASK_REQUEST_RE = re.compile(r"\b(create|add|make|new)\b", re.IGNORECASE)
-
-_TITLE_CLEANUP_RE = re.compile(
-    r"^\s*(create|add|make|new)\s+(a\s+)?(task\s*)?"
-    r"|\s+in\s+(backlog|todo|in_progress|done)\s*$"
-    r"|^\s*(in\s+)?(backlog|todo|in_progress|done)\s*$",
-    re.IGNORECASE,
-)
-
-
-def _extract_quoted_title(text: str) -> str | None:
-    """Return the first quoted substring in the text, if any."""
-    match = _QUOTE_RE.search(text)
-    if match:
-        return (match.group(1) or match.group(2)).strip()
-    return None
-
-
-def _detect_column(text: str) -> str | None:
-    """Return the first valid column id found as a whole word, or None."""
-    lowered = text.lower()
-    for column in _VALID_COLUMNS:
-        if column in lowered:
-            return column
-    return None
-
-
-def _extract_latest_user_text(messages: list) -> str:
-    """Return the content of the most recent user message, or an empty string."""
-    for msg in reversed(messages):
-        if getattr(msg, "type", None) == "human" or (
-            isinstance(msg, dict) and msg.get("role") == "user"
-        ):
-            return str(
-                msg.content if hasattr(msg, "content") else msg.get("content", "")
-            ).strip()
-    return ""
-
-
-def _looks_like_task_request(text: str) -> bool:
-    """Return True if the user seems to be asking to create a task."""
-    if text.lower().strip() in _VALID_COLUMNS:
-        return True
-    return bool(_TASK_REQUEST_RE.search(text))
-
-
-def _clean_title(text: str, column: str | None) -> str:
-    """Strip task-request filler and the column word from an unquoted title."""
-    title = text
-    if column:
-        title = re.sub(
-            r"\b" + re.escape(column) + r"\b", "", title, flags=re.IGNORECASE
-        )
-    title = _TITLE_CLEANUP_RE.sub("", title)
-    title = re.sub(r"^\s*(to|for|about)\s+", "", title, flags=re.IGNORECASE)
-    title = re.sub(r"\s+in\s*$", "", title, flags=re.IGNORECASE)
-    return re.sub(r"\s+", " ", title).strip()
-
-
-def _parse_message(text: str) -> dict:
-    """Extract title and/or column from a single user message.
-
-    Returns a dict with zero or more of: title, column_id.
-    """
-    result: dict[str, Any] = {}
-    text = str(text).strip()
-    lowered = text.lower()
-
-    column = _detect_column(text)
-    if column is not None:
-        result["column_id"] = column
-        # If the whole message is just the column, don't treat it as a title.
-        if lowered == column:
-            return result
-
-    quoted = _extract_quoted_title(text)
-    if quoted:
-        result["title"] = quoted
-    else:
-        cleaned = _clean_title(text, column)
-        if cleaned:
-            result["title"] = cleaned
-
-    return result
-
-
-def _update_draft(draft: dict | None, messages: list) -> dict:
-    """Accumulate title/column from the latest user message into the draft."""
-    updated = dict(draft) if draft else {}
-    parsed = _parse_message(_extract_latest_user_text(messages))
-    if "title" in parsed:
-        updated["title"] = parsed["title"]
-    if "column_id" in parsed:
-        updated["column_id"] = parsed["column_id"]
-    return updated
-
-
-def _build_context_messages(draft: dict, latest_user_text: str) -> list:
-    """Build a focused LLM context from the draft and latest user message."""
-    known_parts = []
-    if draft.get("title"):
-        known_parts.append(f"title: {draft['title']}")
-    if draft.get("column_id"):
-        known_parts.append(f"column: {draft['column_id']}")
-
-    memory = "We are creating a kanban task."
-    if known_parts:
-        memory += " Already known: " + ", ".join(known_parts) + "."
-    memory += (
-        " Use the create_task tool when you have both the title and the column. "
-        "If one is missing, ask only for the missing one. "
-        "Do not ask for information already listed above."
-    )
-
-    return [
-        SystemMessage(content=_SYSTEM_PROMPT),
-        SystemMessage(content=memory),
-        SystemMessage(content=f"Latest user message: {latest_user_text}"),
-    ]
-
-
 def build_graph(model=None):
     """Build and compile the HITL agent graph."""
     # Model resolution is deferred to agent_node so importing this module does
@@ -267,71 +144,23 @@ def build_graph(model=None):
     explicit_model = model
 
     def agent_node(state: AgentState, config: RunnableConfig) -> dict:
-        old_draft = state.get("draft") or {}
-        draft = _update_draft(old_draft, state["messages"])
+        # The LLM sees the system prompt plus the full conversation history so it
+        # can handle corrections, multi-turn clarification, and off-topic input.
+        messages = [SystemMessage(content=_SYSTEM_PROMPT), *state["messages"]]
 
-        had_title_before = bool(old_draft.get("title"))
-        had_column_before = bool(old_draft.get("column_id"))
-
-        latest_text = _extract_latest_user_text(state["messages"])
-        latest_parsed = _parse_message(latest_text)
-
-        # If we already knew one piece and the user just supplied the missing one,
-        # call the tool directly. This must run before the single-piece branches
-        # below so a bare column reply ("todo", "backlog") completes a pending
-        # draft instead of asking for the title again.
-        if (
-            draft.get("title")
-            and draft.get("column_id")
-            and (had_title_before or had_column_before)
-        ):
-            response = _task_tool_call_message(
-                draft, draft["title"], draft["column_id"]
-            )
-            return {"messages": [response], "draft": draft}
-
-        # Deterministic handling for common single-intent task requests. This avoids
-        # small-model hallucinations like proposing a column that was never given.
-        if _looks_like_task_request(latest_text):
-            user_title = latest_parsed.get("title")
-            user_column = latest_parsed.get("column_id")
-
-            # User gave both pieces in one message -> create immediately.
-            if user_title and user_column:
-                return {
-                    "messages": [
-                        _task_tool_call_message(draft, user_title, user_column)
-                    ],
-                    "draft": draft,
-                }
-
-            # User gave only the title -> confirm and ask for the column.
-            if user_title and not user_column:
-                return {
-                    "messages": [
-                        AIMessage(
-                            content=f'Got it, title is "{user_title}". Which column? (backlog, todo, in_progress, done)'
-                        )
-                    ],
-                    "draft": draft,
-                }
-
-            # User gave only the column -> confirm and ask for the title.
-            if user_column and not user_title:
-                return {
-                    "messages": [
-                        AIMessage(
-                            content=f"Got it, column is {user_column}. What's the title?"
-                        )
-                    ],
-                    "draft": draft,
-                }
-
-        # Fall back to the LLM for off-topic handling, ambiguous input, or when
-        # the user did not provide a clear title or column.
         llm = explicit_model if explicit_model is not None else _resolve_model(None)
-        messages = _build_context_messages(draft, latest_text)
         response = llm.invoke(messages)
+
+        # Keep the draft in sync with any tool call so later nodes (and future
+        # turns, if any) can see the last known title/column without re-parsing.
+        draft = dict(state.get("draft") or {})
+        for tc in _extract_tool_calls(response):
+            args = tc.get("args", {})
+            if args.get("title"):
+                draft["title"] = args["title"]
+            if args.get("column_id"):
+                draft["column_id"] = args["column_id"]
+
         return {"messages": [response], "draft": draft}
 
     def tool_node(state: AgentState, config: RunnableConfig) -> dict:

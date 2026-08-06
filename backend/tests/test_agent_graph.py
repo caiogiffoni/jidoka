@@ -15,16 +15,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 
-from agent.graph import (
-    _clean_title,
-    _default_model,
-    _detect_column,
-    _extract_quoted_title,
-    _looks_like_task_request,
-    _parse_message,
-    _update_draft,
-    build_graph,
-)
+from agent.graph import _default_model, build_graph
 
 from tests.agent_fakes import FakeToolCallingModel
 
@@ -40,8 +31,7 @@ class TestAgentGraphHitlFlow:
     def test_graph_interrupts_with_proposed_diff(self):
         graph = make_graph({"title": "Wire HITL flow", "column_id": "todo"})
 
-        # Both title and column are provided, so the agent creates the proposal
-        # deterministically without calling the mocked LLM.
+        # The LLM is invoked and returns a create_task tool call.
         result = graph.invoke(
             {"messages": [{"role": "user", "content": "Add a task 'Wire HITL' to todo"}]},
             config={
@@ -55,7 +45,7 @@ class TestAgentGraphHitlFlow:
         interrupt_value = result["__interrupt__"][0].value
         diff = interrupt_value["diff"]
         assert len(diff.changes) == 1
-        assert diff.changes[0].title == "Wire HITL"
+        assert diff.changes[0].title == "Wire HITL flow"
         assert diff.changes[0].column_id == "todo"
 
     def test_approved_create_task_persists_to_db(self, session, test_user):
@@ -147,8 +137,9 @@ class TestAgentGraphHitlFlow:
                 },
             )
 
-    def test_agent_node_prepends_system_prompt(self):
-        """The agent must prepend a system prompt before the user's messages."""
+    def test_agent_node_passes_system_prompt_and_full_history(self):
+        """The agent must invoke the LLM with a system prompt and the full
+        conversation history, not just the latest user message."""
         recorded_messages = []
 
         class RecordingFake(BaseChatModel):
@@ -174,7 +165,13 @@ class TestAgentGraphHitlFlow:
 
         graph = build_graph(model=RecordingFake(tool_args={"title": "Test", "column_id": "todo"}))
         graph.invoke(
-            {"messages": [{"role": "user", "content": "Add a task"}]},
+            {
+                "messages": [
+                    {"role": "user", "content": "Add a task"},
+                    {"role": "assistant", "content": "What title?"},
+                    {"role": "user", "content": "Test"},
+                ]
+            },
             config={
                 "configurable": {
                     "thread_id": str(uuid.uuid4()),
@@ -183,10 +180,86 @@ class TestAgentGraphHitlFlow:
             },
         )
 
-        assert len(recorded_messages) >= 2
+        assert len(recorded_messages) == 4
         assert recorded_messages[0].type == "system"
         assert "focused kanban assistant" in recorded_messages[0].content
         assert any("Add a task" in str(getattr(m, "content", "")) for m in recorded_messages)
+        assert any("What title?" in str(getattr(m, "content", "")) for m in recorded_messages)
+        assert any("Test" in str(getattr(m, "content", "")) for m in recorded_messages)
+
+    def test_second_turn_llm_receives_full_conversation_history(self):
+        """Regression: messages must accumulate across turns via the checkpointer,
+        not be replaced. Without the add_messages reducer on AgentState.messages,
+        turn 2's LLM would only see the latest user message and forget the title
+        it had already confirmed in turn 1.
+        """
+        recorded_per_call: list[list] = []
+
+        class SequencedRecordingFake(BaseChatModel):
+            responses: list[AIMessage]
+
+            @property
+            def _llm_type(self) -> str:
+                return "sequenced_recording_fake"
+
+            def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+                recorded_per_call.append(list(messages))
+                if not self.responses:
+                    raise RuntimeError("SequencedRecordingFake ran out of responses")
+                message = self.responses.pop(0)
+                generation = ChatGeneration(message=message)
+                return ChatResult(generations=[generation], llm_output={})
+
+            async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+                raise NotImplementedError
+
+            @property
+            def _identifying_params(self) -> dict[str, Any]:
+                return {}
+
+        responses = [
+            AIMessage(content='Got it, title is "create projects". Which column?'),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "call_1",
+                        "name": "create_task",
+                        "args": {"title": "create projects", "column_id": "backlog"},
+                    }
+                ],
+            ),
+        ]
+        graph = build_graph(model=SequencedRecordingFake(responses=responses))
+        thread_id = str(uuid.uuid4())
+        config = {
+            "configurable": {
+                "thread_id": thread_id,
+                "user_id": str(uuid.uuid4()),
+            }
+        }
+
+        graph.invoke(
+            {"messages": [{"role": "user", "content": "create a task named create projects"}]},
+            config=config,
+        )
+        result = graph.invoke(
+            {"messages": [{"role": "user", "content": "backlog"}]},
+            config=config,
+        )
+
+        # Turn 2 produced a tool call -> we reached the propose interrupt.
+        assert result.get("__interrupt__") is not None
+
+        assert len(recorded_per_call) == 2
+        turn2_contents = [
+            str(getattr(m, "content", "")) for m in recorded_per_call[1]
+        ]
+        # Turn 2 must see both the original user message and the assistant's
+        # turn-1 confirmation, not just the bare "backlog" reply.
+        assert any("create a task named create projects" in c for c in turn2_contents)
+        assert any("create projects" in c and "Which column" in c for c in turn2_contents)
+        assert any(c == "backlog" for c in turn2_contents)
 
 
 class TestDefaultModel:
@@ -261,62 +334,3 @@ class TestDefaultModel:
 
         assert len(captured["tools"]) == 1
         assert captured["tools"][0].name == "create_task"
-
-
-class TestDraftExtraction:
-    """Unit tests for the rule-based task-draft accumulation."""
-
-    def test_extract_quoted_title(self):
-        assert _extract_quoted_title('Create "Work on car"') == "Work on car"
-        assert _extract_quoted_title("Create 'Work on car'") == "Work on car"
-        assert _extract_quoted_title("Create Work on car") is None
-
-    def test_detect_column(self):
-        assert _detect_column("put it in todo") == "todo"
-        assert _detect_column("backlog") == "backlog"
-        assert _detect_column("in_progress") == "in_progress"
-        assert _detect_column("no column here") is None
-
-    def test_update_draft_accumulates_title_then_column(self):
-        draft = _update_draft(None, [{"role": "user", "content": "Create 'Work on car'"}])
-        assert draft["title"] == "Work on car"
-        assert draft.get("column_id") is None
-
-        draft = _update_draft(draft, [{"role": "user", "content": "todo"}])
-        assert draft["title"] == "Work on car"
-        assert draft["column_id"] == "todo"
-
-    def test_update_draft_does_not_overwrite_title_with_column_reply(self):
-        draft = {"title": "Work on car", "column_id": None}
-        draft = _update_draft(draft, [{"role": "user", "content": "in_progress"}])
-        assert draft["title"] == "Work on car"
-        assert draft["column_id"] == "in_progress"
-
-    def test_parse_message_extracts_quoted_title_and_column(self):
-        assert _parse_message("Create 'Read docs' in todo") == {
-            "title": "Read docs",
-            "column_id": "todo",
-        }
-
-    def test_parse_message_title_only_asks_for_column_later(self):
-        assert _parse_message('can you create "Work on car"?') == {
-            "title": "Work on car"
-        }
-
-    def test_parse_message_column_only(self):
-        assert _parse_message("backlog") == {"column_id": "backlog"}
-        assert _parse_message("in_progress") == {"column_id": "in_progress"}
-
-    def test_clean_title_strips_task_filler(self):
-        assert _clean_title("Add a task to wire HITL", None) == "wire HITL"
-        assert _clean_title("Create a task Read docs in todo", "todo") == "Read docs"
-        assert _clean_title("Add a task", None) == ""
-
-    def test_looks_like_task_request(self):
-        assert _looks_like_task_request("Create a task")
-        assert _looks_like_task_request("Add 'Buy milk'")
-        assert _looks_like_task_request("make new task")
-        assert _looks_like_task_request("todo")
-        assert _looks_like_task_request("in_progress")
-        assert not _looks_like_task_request("Who is the president?")
-        assert not _looks_like_task_request("Move task 123 to done")

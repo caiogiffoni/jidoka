@@ -96,9 +96,10 @@ def test_conversation_title_then_column(client, queued_graph):
     """Simulate: user gives title, then column, agent proposes task."""
     thread_id = str(uuid.uuid4())
 
-    # Turn 1 is deterministic: the agent extracts the title and asks for the
-    # column without calling the LLM.
-    graph_module.model = QueueFakeModel(responses=[])
+    # Turn 1: the LLM extracts the title and asks for the column.
+    graph_module.model = QueueFakeModel(
+        responses=[_assistant('Got it, title is "Work on my car". Which column?')]
+    )
     res1 = client.post(
         "/agent/stream",
         json={"thread_id": thread_id, "message": 'can you create a task "Work on my car"?'},
@@ -113,8 +114,10 @@ def test_conversation_title_then_column(client, queued_graph):
         for ev in events1
     )
 
-    # Turn 2 is also deterministic: the agent short-circuits to create_task.
-    graph_module.model = QueueFakeModel(responses=[])
+    # Turn 2: the LLM now has the full history and calls create_task.
+    graph_module.model = QueueFakeModel(
+        responses=[_create_task_tool_call("Work on my car", "in_progress")]
+    )
     res2 = client.post(
         "/agent/stream",
         json={"thread_id": thread_id, "message": "in_progress"},
@@ -137,8 +140,10 @@ def test_conversation_title_and_column_in_one_message(client, queued_graph):
     """Simulate: user gives title and column in one message."""
     thread_id = str(uuid.uuid4())
 
-    # Deterministic: the regex extracts both the quoted title and the column.
-    graph_module.model = QueueFakeModel(responses=[])
+    # The LLM extracts both pieces and calls create_task.
+    graph_module.model = QueueFakeModel(
+        responses=[_create_task_tool_call("Read docs", "todo")]
+    )
     res = client.post(
         "/agent/stream",
         json={"thread_id": thread_id, "message": "Create a task 'Read docs' in todo"},
@@ -155,15 +160,15 @@ def test_conversation_title_and_column_in_one_message(client, queued_graph):
     assert change.column_id == "todo"
 
 
-def test_short_circuit_uses_draft_on_second_turn(client, queued_graph):
-    """If the agent already knows the title, turn 2 must not call the LLM.
+def test_conversation_continues_with_llm_on_second_turn(client, queued_graph):
+    """A multi-turn conversation reaches the propose node via the LLM each turn.
 
-    The QueueFakeModel for turn 2 is empty; if the short-circuit does not fire,
-    the test fails because there is no LLM response to consume.
+    There is no deterministic short-circuit anymore, so the second turn must
+    also be handled by the mocked LLM.
     """
     thread_id = str(uuid.uuid4())
 
-    # Turn 1: agent extracts the title and asks for the column.
+    # Turn 1: the LLM asks for the column.
     graph_module.model = QueueFakeModel(
         responses=[_assistant('Got it, title is "Task 852". Which column?')]
     )
@@ -172,18 +177,20 @@ def test_short_circuit_uses_draft_on_second_turn(client, queued_graph):
         json={"thread_id": thread_id, "message": "can you create title = 'Task 852'."},
     )
     events1 = _parse_sse(res1.text)
-    print("\n--- Short-circuit turn 1 events ---")
+    print("\n--- Multi-turn turn 1 events ---")
     for ev in events1:
         print(ev)
 
-    # Turn 2: empty LLM queue. The code must call create_task from draft.
-    graph_module.model = QueueFakeModel(responses=[])
+    # Turn 2: the LLM is invoked again, this time calling create_task.
+    graph_module.model = QueueFakeModel(
+        responses=[_create_task_tool_call("Task 852", "backlog")]
+    )
     res2 = client.post(
         "/agent/stream",
         json={"thread_id": thread_id, "message": "backlog"},
     )
     events2 = _parse_sse(res2.text)
-    print("\n--- Short-circuit turn 2 events ---")
+    print("\n--- Multi-turn turn 2 events ---")
     for ev in events2:
         print(ev)
 

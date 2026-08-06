@@ -5,8 +5,9 @@ and the frontend diff approval UI.
 """
 
 import uuid
-from typing import Literal, TypedDict
+from typing import Annotated, Literal, TypedDict
 
+from langgraph.graph.message import add_messages
 from pydantic import model_validator
 from sqlmodel import Field, SQLModel
 
@@ -53,7 +54,7 @@ class AgentState(TypedDict):
     partial task details so the agent does not have to rely on the LLM's memory.
     """
 
-    messages: list
+    messages: Annotated[list, add_messages]
     proposed_changes: list[CreateTaskChange]
     approved: bool | None
     applied_results: list[Task]
