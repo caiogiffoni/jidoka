@@ -15,6 +15,7 @@ interface Change {
   column_id?: string;
   description?: string;
   project_id?: string;
+  project_name?: string;
   checklist?: { text: string; checked: boolean }[];
   from_column_id?: string;
   to_column_id?: string;

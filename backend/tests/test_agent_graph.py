@@ -378,6 +378,134 @@ class TestAgentGraphHitlFlow:
         assert moved[0]["id"] == str(task.id)
         assert moved[0]["column_id"] == "done"
 
+    def test_bulk_move_tasks_by_project(self, session, test_user):
+        """The agent can list projects, filter tasks by project, and propose moving
+        all of them to a target column in a single diff."""
+        from langgraph.types import Command
+        from services import create_task_service
+        from models import Project, TaskCreate
+
+        project = Project(name="Alpha", description="", user_id=test_user.id)
+        session.add(project)
+        session.commit()
+        session.refresh(project)
+        task_a = create_task_service(
+            session,
+            test_user.id,
+            TaskCreate(title="Alpha one", column_id="todo", project_id=project.id),
+        )
+        task_b = create_task_service(
+            session,
+            test_user.id,
+            TaskCreate(title="Alpha two", column_id="in_progress", project_id=project.id),
+        )
+        create_task_service(
+            session,
+            test_user.id,
+            TaskCreate(title="Other", column_id="todo"),
+        )
+
+        thread_id = str(uuid.uuid4())
+        config = {
+            "configurable": {
+                "thread_id": thread_id,
+                "user_id": str(test_user.id),
+                "session": session,
+            }
+        }
+
+        graph = build_graph(
+            model=QueueFakeModel(
+                responses=[
+                    _tool_call("list_projects", {}),
+                    _tool_call(
+                        "list_tasks", {"project_id": str(project.id)}
+                    ),
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "call_3",
+                                "name": "move_task",
+                                "args": {
+                                    "task_id": str(task_a.id),
+                                    "column_id": "done",
+                                },
+                            },
+                            {
+                                "id": "call_4",
+                                "name": "move_task",
+                                "args": {
+                                    "task_id": str(task_b.id),
+                                    "column_id": "done",
+                                },
+                            },
+                        ],
+                    ),
+                ]
+            )
+        )
+
+        result = graph.invoke(
+            {"messages": [{"role": "user", "content": "Move all Alpha tasks to done"}]},
+            config=config,
+        )
+
+        interrupt_value = result["__interrupt__"][0].value
+        diff = interrupt_value["diff"]
+        assert len(diff.changes) == 2
+        titles = {change.title for change in diff.changes}
+        assert titles == {"Alpha one", "Alpha two"}
+        assert all(change.project_name == "Alpha" for change in diff.changes)
+
+        final_state = graph.invoke(Command(resume={"approved": True}), config=config)
+        moved = final_state["applied_moved_results"]
+        assert len(moved) == 2
+        assert all(task["column_id"] == "done" for task in moved)
+
+    def test_list_tasks_by_project_name_filters_and_includes_name(self, session, test_user):
+        """The agent can list tasks by project name; read results include the
+        project name so the LLM can mention it."""
+        from models import Project, TaskCreate
+        from services import create_task_service
+
+        project = Project(name="Alpha", description="", user_id=test_user.id)
+        session.add(project)
+        session.commit()
+        session.refresh(project)
+        create_task_service(
+            session,
+            test_user.id,
+            TaskCreate(title="Alpha task", column_id="todo", project_id=project.id),
+        )
+        create_task_service(
+            session, test_user.id, TaskCreate(title="Other task", column_id="todo")
+        )
+
+        graph = build_graph(
+            model=QueueFakeModel(
+                responses=[
+                    _tool_call("list_tasks", {"project_name": "Alpha"}),
+                    _assistant("Found 1 Alpha task: Alpha task"),
+                ]
+            )
+        )
+        result = graph.invoke(
+            {"messages": [{"role": "user", "content": "What tasks are in project Alpha?"}]},
+            config={
+                "configurable": {
+                    "thread_id": str(uuid.uuid4()),
+                    "user_id": str(test_user.id),
+                    "session": session,
+                }
+            },
+        )
+
+        assert "__interrupt__" not in result or result.get("__interrupt__") is None
+        last_message = result["messages"][-1]
+        content = str(getattr(last_message, "content", ""))
+        assert "Alpha task" in content
+
 
 class TestDefaultModel:
     """Coverage for the production LLM factory that mutmut otherwise flags."""

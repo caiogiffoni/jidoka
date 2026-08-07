@@ -85,15 +85,33 @@ def move_task(
     }
 
 
-def list_tasks(column_id: str | None = None, include_archived: bool = False) -> dict:
+def list_tasks(
+    column_id: str | None = None,
+    include_archived: bool = False,
+    project_id: str | uuid.UUID | None = None,
+    project_name: str | None = None,
+) -> dict:
     """List tasks on the board.
 
     Returns a dict with the requested filters. The graph's tool_node executes
-    the actual database query using the current user's session.
+    the actual database query using the current user's session and resolves
+    project_name to a project_id when needed.
     """
     if column_id is not None and column_id not in _VALID_COLUMNS:
         raise ValueError(f"invalid column_id: {column_id}")
-    return {"column_id": column_id, "include_archived": include_archived}
+
+    parsed_project_id: uuid.UUID | None = None
+    if project_id is not None:
+        parsed_project_id = (
+            project_id if isinstance(project_id, uuid.UUID) else uuid.UUID(project_id)
+        )
+
+    return {
+        "column_id": column_id,
+        "include_archived": include_archived,
+        "project_id": parsed_project_id,
+        "project_name": project_name.strip() if project_name else None,
+    }
 
 
 def list_projects() -> dict:

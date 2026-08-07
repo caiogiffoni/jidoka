@@ -80,6 +80,7 @@ def list_tasks_service(
     user_id: uuid.UUID,
     column_id: str | None = None,
     include_archived: bool = False,
+    project_id: uuid.UUID | None = None,
 ) -> list[Task]:
     """List tasks for a user, matching GET /tasks behavior."""
     query = (
@@ -91,6 +92,8 @@ def list_tasks_service(
         query = query.where(Task.archived.is_(False))
     if column_id is not None:
         query = query.where(Task.column_id == column_id)
+    if project_id is not None:
+        query = query.where(Task.project_id == project_id)
     return list(session.exec(query).all())
 
 

@@ -6,7 +6,7 @@ from typing import Literal
 from blocked_usernames import PROFANE_USERNAMES
 from pydantic import EmailStr, field_serializer, model_validator
 from sqlalchemy import JSON, Column
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field, Relationship, SQLModel
 
 ColumnId = Literal["backlog", "todo", "in_progress", "done"]
 
@@ -121,6 +121,10 @@ class Project(SQLModel, table=True):
     daily_enabled: bool = Field(default=False)
     daily_template: DailyTemplate | None = Field(default=None, sa_column=Column(JSON))
     daily_last_generated: str | None = Field(default=None)
+    tasks: list["Task"] = Relationship(
+        back_populates="project",
+        sa_relationship_kwargs={"foreign_keys": "[Task.project_id]"},
+    )
 
     @field_serializer("daily_template")
     def serialize_daily_template(
@@ -188,6 +192,10 @@ class Task(SQLModel, table=True):
     # it never deletes or blocks deletion of the task.
     project_id: uuid.UUID | None = Field(
         default=None, foreign_key="projects.id", ondelete="SET NULL", index=True
+    )
+    project: Project | None = Relationship(
+        back_populates="tasks",
+        sa_relationship_kwargs={"foreign_keys": "[Task.project_id]"},
     )
     # Display order within a column; the frontend renders tasks sorted by it.
     position: int

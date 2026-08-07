@@ -13,6 +13,8 @@ import os
 import uuid
 from typing import Any
 
+from sqlalchemy import select
+
 
 def _json_safe(obj: Any) -> Any:
     """Return a JSON-serializable copy of a Pydantic model_dump dict.
@@ -43,7 +45,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
-from models import TaskCreate
+from models import Project, TaskCreate
 from services import (
     create_task_service,
     get_task_service,
@@ -61,7 +63,7 @@ _SYSTEM_PROMPT = (
     "You have these tools:\n"
     "- create_task(title, column_id, description?, project_id?, checklist?)\n"
     "- move_task(task_id, column_id, position?)\n"
-    "- list_tasks(column_id?, include_archived?)\n"
+    "- list_tasks(column_id?, include_archived?, project_id?, project_name?)\n"
     "- list_projects()\n"
     "- get_task(task_id)\n\n"
     "CRITICAL RULES:\n"
@@ -84,6 +86,8 @@ _SYSTEM_PROMPT = (
     "- User: 'Move the top backlog item to todo' → list_tasks(column_id='backlog'), "
     "then move_task(task_id=<first id>, column_id='todo')\n"
     "- User: 'What do I have in progress?' → list_tasks(column_id='in_progress'), then summarize\n"
+    "- User: 'Move all tasks from project X to done' → list_tasks(project_name='X'), "
+    "then call move_task once per returned task\n"
     "- User: 'Who is the president?' → 'I'm here to help with your kanban board. What can I do for you?'"
 )
 
@@ -141,6 +145,7 @@ def _task_to_dict(task) -> dict:
         "column_id": task.column_id,
         "description": task.description,
         "project_id": str(task.project_id) if task.project_id else None,
+        "project_name": task.project.name if task.project else None,
         "archived": task.archived,
         "due_date": task.due_date.isoformat() if task.due_date else None,
         "checklist": task.checklist or [],
@@ -154,6 +159,36 @@ def _project_to_dict(project) -> dict:
         "name": project.name,
         "description": project.description,
     }
+
+
+def _project_name(session, project_id: uuid.UUID | None) -> str | None:
+    """Return a project's name, or None if the task has no project."""
+    if project_id is None:
+        return None
+    project = session.get(Project, project_id)
+    return project.name if project else None
+
+
+def _resolve_project_name_to_id(
+    session, user_id: uuid.UUID, project_name: str | None
+) -> uuid.UUID | None:
+    """Look up a project id by name for the current user.
+
+    Returns None if no name is supplied or no matching project exists.
+    """
+    if project_name is None:
+        return None
+    from sqlalchemy import func
+
+    project = session.exec(
+        select(Project)
+        .where(
+            Project.user_id == user_id,
+            func.lower(Project.name) == project_name.lower(),
+        )
+        .limit(1)
+    ).scalars().first()
+    return project.id if project else None
 
 
 def build_graph(model=None):
@@ -189,7 +224,10 @@ def build_graph(model=None):
 
             if name == "create_task":
                 result = create_task_tool.invoke(args)
-                changes.append(CreateTaskChange(**result))
+                project_name = _project_name(session, result.get("project_id"))
+                changes.append(
+                    CreateTaskChange(**result, project_name=project_name)
+                )
                 tool_messages.append(
                     ToolMessage(content="proposed", tool_call_id=tool_call_id)
                 )
@@ -202,6 +240,7 @@ def build_graph(model=None):
                         title=task.title,
                         from_column_id=task.column_id,
                         to_column_id=parsed["column_id"],
+                        project_name=task.project.name if task.project else None,
                         position=parsed.get("position"),
                     )
                 )
@@ -210,11 +249,18 @@ def build_graph(model=None):
                 )
             elif name == "list_tasks":
                 filters = list_tasks_tool.invoke(args)
+                project_id = filters.get("project_id")
+                project_name = filters.get("project_name")
+                if project_id is None and project_name is not None:
+                    project_id = _resolve_project_name_to_id(
+                        session, user_id, project_name
+                    )
                 tasks = list_tasks_service(
                     session,
                     user_id,
                     column_id=filters.get("column_id"),
                     include_archived=filters.get("include_archived", False),
+                    project_id=project_id,
                 )
                 result = {"tasks": [_task_to_dict(t) for t in tasks]}
                 tool_messages.append(

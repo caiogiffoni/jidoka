@@ -22,6 +22,7 @@ class CreateTaskChange(SQLModel):
     description: str | None = None
     column_id: Literal["backlog", "todo", "in_progress", "done"] = "todo"
     project_id: uuid.UUID | None = None
+    project_name: str | None = None
     checklist: list[ChecklistItem] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -41,6 +42,7 @@ class MoveTaskChange(SQLModel):
     title: str
     from_column_id: Literal["backlog", "todo", "in_progress", "done"]
     to_column_id: Literal["backlog", "todo", "in_progress", "done"]
+    project_name: str | None = None
     position: int | None = None
 
     @model_validator(mode="after")

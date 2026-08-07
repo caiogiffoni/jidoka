@@ -110,11 +110,34 @@ class TestListTasksTool:
 
     def test_returns_filter_dict(self):
         result = list_tasks(column_id="backlog", include_archived=True)
-        assert result == {"column_id": "backlog", "include_archived": True}
+        assert result == {
+            "column_id": "backlog",
+            "include_archived": True,
+            "project_id": None,
+            "project_name": None,
+        }
 
     def test_defaults_are_valid(self):
         result = list_tasks()
-        assert result == {"column_id": None, "include_archived": False}
+        assert result == {
+            "column_id": None,
+            "include_archived": False,
+            "project_id": None,
+            "project_name": None,
+        }
+
+    def test_accepts_project_id_filter(self):
+        project_id = uuid.uuid4()
+        result = list_tasks(project_id=str(project_id))
+        assert result["project_id"] == project_id
+
+    def test_accepts_project_name_filter(self):
+        result = list_tasks(project_name="Alpha")
+        assert result["project_name"] == "Alpha"
+
+    def test_trims_project_name_filter(self):
+        result = list_tasks(project_name="  Alpha  ")
+        assert result["project_name"] == "Alpha"
 
     def test_invalid_column_is_rejected(self):
         with pytest.raises(ValueError):
