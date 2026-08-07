@@ -29,7 +29,7 @@ export function BoardFilters({
 
   return (
     <div className="flex flex-wrap items-center gap-2 px-4 pt-3 sm:px-6">
-      <div className="relative flex-1 basis-48">
+      <div className="relative w-56">
         <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           type="search"
