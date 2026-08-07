@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -26,6 +26,7 @@ import {
 } from "@/lib/types";
 import { Column } from "./column";
 import { TaskCard } from "./task-card";
+import { BoardFilters, emptyFilters } from "./board-filters";
 import { moveTask } from "@/app/actions";
 
 export function Board({
@@ -49,7 +50,33 @@ export function Board({
   const moveTaskToColumn = useBoardStore((s) => s.moveTaskToColumn);
   const reorderTask = useBoardStore((s) => s.reorderTask);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [filters, setFilters] = useState(emptyFilters);
   const dragOrigin = useRef<{ column: ColumnId; index: number } | null>(null);
+
+  const normalizedSearch = filters.search.trim().toLowerCase();
+  const filteredTasks: TasksByColumn = useMemo(() => {
+    const result: TasksByColumn = {
+      backlog: [],
+      todo: [],
+      in_progress: [],
+      done: [],
+    };
+    for (const column of COLUMNS) {
+      result[column.id] = tasks[column.id].filter((task) => {
+        if (filters.projectId && task.projectId !== filters.projectId) return false;
+        if (!normalizedSearch) return true;
+        const haystack = [
+          task.title,
+          task.description ?? "",
+          ...task.checklist.map((item) => item.text),
+        ]
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(normalizedSearch);
+      });
+    }
+    return result;
+  }, [tasks, filters.projectId, normalizedSearch]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -173,14 +200,16 @@ export function Board({
         },
       }}
     >
+      <BoardFilters projects={projects} filters={filters} onChange={setFilters} />
       <div className="flex flex-1 items-start gap-4 overflow-x-auto p-4 sm:p-6">
         {COLUMNS.map((column) => (
           <Column
             key={column.id}
             id={column.id}
             title={column.title}
-            tasks={tasks[column.id]}
+            tasks={filteredTasks[column.id]}
             projects={projects}
+            filtersActive={normalizedSearch !== "" || filters.projectId !== ""}
           />
         ))}
       </div>

@@ -24,11 +24,13 @@ export function Column({
   title,
   tasks,
   projects,
+  filtersActive = false,
 }: {
   id: ColumnId;
   title: string;
   tasks: Task[];
   projects: Project[];
+  filtersActive?: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
 
@@ -56,7 +58,7 @@ export function Column({
         >
           {tasks.length === 0 && (
             <div className="rounded-lg border border-dashed py-6 text-center text-xs text-muted-foreground">
-              Drop tasks here
+              {filtersActive ? "No matching tasks" : "Drop tasks here"}
             </div>
           )}
           {tasks.map((task) => (
@@ -65,6 +67,7 @@ export function Column({
               task={task}
               columnId={id}
               projects={projects}
+              disabled={filtersActive}
             />
           ))}
         </div>
