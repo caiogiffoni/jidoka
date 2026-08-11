@@ -168,12 +168,15 @@ async def _fetch_github_userinfo(access_token: str) -> OAuthUserInfo:
         emails_response.raise_for_status()
         emails = emails_response.json()
 
-    primary_email = next(
+    # Prefer a verified email; among verified emails prefer the primary one.
+    # Fall back to the primary email even if unverified, but fail if none exist.
+    verified_primary = next(
         (e for e in emails if e.get("primary") and e.get("verified")),
         None,
     )
-    fallback_email = next((e for e in emails if e.get("primary")), None)
-    chosen = primary_email or fallback_email
+    any_verified = next((e for e in emails if e.get("verified")), None)
+    primary = next((e for e in emails if e.get("primary")), None)
+    chosen = verified_primary or any_verified or primary
     if chosen is None:
         raise RuntimeError("GitHub did not return a usable email address")
 
@@ -232,19 +235,29 @@ def get_or_create_oauth_user(
         return existing
 
     # Link to an existing password user only when the email is verified.
-    if info.email_verified:
-        linked = session.exec(select(User).where(User.email == info.email)).first()
-        if linked is not None:
-            linked.oauth_provider = provider
-            linked.oauth_provider_id = info.provider_id
-            session.add(linked)
-            session.commit()
-            session.refresh(linked)
-            return linked
+    existing_by_email = session.exec(
+        select(User).where(User.email == info.email)
+    ).first()
+    if existing_by_email is not None:
+        if not info.email_verified:
+            raise RuntimeError(
+                "an account with this email already exists; "
+                "verify the email with the provider to link it"
+            )
+        existing_by_email.oauth_provider = provider
+        existing_by_email.oauth_provider_id = info.provider_id
+        session.add(existing_by_email)
+        session.commit()
+        session.refresh(existing_by_email)
+        return existing_by_email
+
+    username_base = info.username_base
+    if _normalize_username(username_base) == "user":
+        username_base = info.email.split("@")[0]
 
     user = User(
         email=info.email,
-        username=_resolve_username(session, info.username_base),
+        username=_resolve_username(session, username_base),
         oauth_provider=provider,
         oauth_provider_id=info.provider_id,
     )

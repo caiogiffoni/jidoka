@@ -4,7 +4,7 @@ import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { setAuthToken } from "@/app/actions";
 
-function OAuthCallbackHandler() {
+export function OAuthCallbackHandler() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
