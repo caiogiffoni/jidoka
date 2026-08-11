@@ -3,11 +3,14 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
+import httpx
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlmodel import Session, select
 
+import oauth as oauth_module
 from blocked_usernames import PROFANE_USERNAMES
 from db import get_session
 from models import AuthResponse, User, UserCreate, UserLogin, UserPublic
@@ -156,3 +159,60 @@ def logout():
     # Real logout happens in the Next.js Server Action by deleting the cookie.
     # This endpoint exists for symmetry and any future server-side revocation.
     return None
+
+
+@router.get("/oauth/{provider}")
+def oauth_initiate(provider: str):
+    if provider not in oauth_module._PROVIDERS:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="unknown oauth provider",
+        )
+    try:
+        url = oauth_module.build_authorize_url(provider)  # type: ignore[arg-type]
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    return RedirectResponse(url)
+
+
+def _oauth_error_redirect(message: str) -> RedirectResponse:
+    frontend = oauth_module._frontend_url()
+    return RedirectResponse(
+        f"{frontend}/oauth/callback?error={message}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.get("/oauth/{provider}/callback")
+async def oauth_callback(
+    provider: str,
+    code: str | None = None,
+    state: str | None = None,
+    session: Session = Depends(get_session),
+):
+    if provider not in oauth_module._PROVIDERS:
+        return _oauth_error_redirect("unknown_provider")
+    if not code or not state:
+        return _oauth_error_redirect("missing_oauth_parameters")
+    if not oauth_module._verify_state(state, provider):  # type: ignore[arg-type]
+        return _oauth_error_redirect("invalid_state")
+
+    try:
+        info = await oauth_module.fetch_userinfo(provider, code)  # type: ignore[arg-type]
+    except RuntimeError as exc:
+        return _oauth_error_redirect(str(exc).replace(" ", "_"))
+    except httpx.HTTPError as exc:
+        return _oauth_error_redirect("provider_request_failed")
+
+    user = oauth_module.get_or_create_oauth_user(
+        session, provider, info  # type: ignore[arg-type]
+    )
+    token = _create_token(user)
+    frontend = oauth_module._frontend_url()
+    return RedirectResponse(
+        f"{frontend}/oauth/callback?token={token}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
