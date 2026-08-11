@@ -1,25 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { setAuthToken } from "@/app/actions";
 
 export default function OAuthCallbackPage() {
-  const [status, setStatus] = useState("Completing sign in…");
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get("token");
-    const error = params.get("error");
+    const token = searchParams.get("token");
+    const error = searchParams.get("error");
 
     if (error) {
-      setStatus("Sign-in failed. Redirecting…");
-      window.location.href = `/login?error=${encodeURIComponent(error)}`;
+      router.replace(`/login?error=${encodeURIComponent(error)}`);
       return;
     }
 
     if (!token) {
-      setStatus("Missing token. Redirecting…");
-      window.location.href = "/login?error=missing_token";
+      router.replace("/login?error=missing_token");
       return;
     }
 
@@ -29,26 +28,24 @@ export default function OAuthCallbackPage() {
       .then((result) => {
         if (cancelled) return;
         if (result.type === "success") {
-          window.location.href = "/board";
+          router.replace("/board");
         } else {
-          setStatus("Could not sign in. Redirecting…");
-          window.location.href = `/login?error=${encodeURIComponent(result.message)}`;
+          router.replace(`/login?error=${encodeURIComponent(result.message)}`);
         }
       })
       .catch(() => {
         if (cancelled) return;
-        setStatus("Something went wrong. Redirecting…");
-        window.location.href = "/login?error=callback_failed";
+        router.replace("/login?error=callback_failed");
       });
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [router, searchParams]);
 
   return (
     <div className="flex min-h-dvh items-center justify-center bg-background p-4 text-sm text-muted-foreground">
-      {status}
+      Completing sign in…
     </div>
   );
 }
