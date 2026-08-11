@@ -8,13 +8,6 @@ export const metadata: Metadata = {
   title: "Create account | Jidoka",
 };
 
-function configuredProviders(): ("google" | "github")[] {
-  const providers: ("google" | "github")[] = [];
-  if (process.env.GOOGLE_CLIENT_ID) providers.push("google");
-  if (process.env.GITHUB_CLIENT_ID) providers.push("github");
-  return providers;
-}
-
 export default function RegisterPage() {
   return (
     <AuthCard
@@ -27,7 +20,7 @@ export default function RegisterPage() {
       <RegisterForm />
       <OAuthButtons
         backendUrl={BACKEND_URL}
-        providers={configuredProviders()}
+        providers={["google", "github"]}
         className="pt-2"
       />
     </AuthCard>

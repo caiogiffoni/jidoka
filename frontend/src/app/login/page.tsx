@@ -8,13 +8,6 @@ export const metadata: Metadata = {
   title: "Sign in | Jidoka",
 };
 
-function configuredProviders(): ("google" | "github")[] {
-  const providers: ("google" | "github")[] = [];
-  if (process.env.GOOGLE_CLIENT_ID) providers.push("google");
-  if (process.env.GITHUB_CLIENT_ID) providers.push("github");
-  return providers;
-}
-
 export default function LoginPage() {
   return (
     <AuthCard
@@ -27,7 +20,7 @@ export default function LoginPage() {
       <LoginForm />
       <OAuthButtons
         backendUrl={BACKEND_URL}
-        providers={configuredProviders()}
+        providers={["google", "github"]}
         className="pt-2"
       />
     </AuthCard>
