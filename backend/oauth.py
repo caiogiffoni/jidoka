@@ -100,7 +100,7 @@ def build_authorize_url(provider: OAuthProvider) -> str:
     }
     # httpx handles URL encoding; keeping the call synchronous because it only
     # builds a URL, no I/O.
-    return httpx.URL(config["authorize_url"], params=params).href
+    return str(httpx.URL(config["authorize_url"], params=params))
 
 
 async def _exchange_code(provider: OAuthProvider, code: str) -> str:

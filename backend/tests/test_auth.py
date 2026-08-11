@@ -4,6 +4,8 @@ from fastapi.testclient import TestClient
 import auth
 import db
 import main
+import oauth as oauth_module
+from models import User
 
 
 @pytest.fixture()
@@ -122,3 +124,110 @@ def test_me_rejects_invalid_token(anon_client):
 def test_logout_returns_no_content(anon_client):
     response = anon_client.post("/auth/logout")
     assert response.status_code == 204
+
+
+@pytest.fixture()
+def google_creds(monkeypatch):
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "google-client-id")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "google-client-secret")
+
+
+def test_oauth_initiate_redirects_to_provider(anon_client, google_creds):
+    response = anon_client.get("/auth/oauth/google", follow_redirects=False)
+    assert response.status_code == 307
+    assert "accounts.google.com" in response.headers["location"]
+    assert "client_id=google-client-id" in response.headers["location"]
+
+
+def test_oauth_initiate_rejects_unknown_provider(anon_client):
+    response = anon_client.get("/auth/oauth/unknown", follow_redirects=False)
+    assert response.status_code == 404
+
+
+def test_oauth_initiate_returns_503_when_unconfigured(anon_client, monkeypatch):
+    monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GOOGLE_CLIENT_SECRET", raising=False)
+    response = anon_client.get("/auth/oauth/google", follow_redirects=False)
+    assert response.status_code == 503
+
+
+def _google_state() -> str:
+    return oauth_module._sign_state("google")
+
+
+def test_oauth_callback_creates_user_and_redirects(anon_client, monkeypatch):
+    async def fake_fetch(provider, code):
+        assert provider == "google"
+        return oauth_module.OAuthUserInfo(
+            provider_id="google-123",
+            email="oauthnew@example.com",
+            email_verified=True,
+            username_base="oauthnew",
+        )
+
+    monkeypatch.setattr(oauth_module, "fetch_userinfo", fake_fetch)
+
+    state = _google_state()
+    response = anon_client.get(
+        "/auth/oauth/google/callback",
+        params={"code": "valid-code", "state": state},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].startswith(
+        "http://localhost:3000/oauth/callback?token="
+    )
+
+
+def test_oauth_callback_links_verified_email_user(
+    anon_client, monkeypatch, session
+):
+    existing = User(
+        email="link@example.com",
+        username="linkuser",
+        hashed_password=auth._hash_password("Password1!"),
+    )
+    session.add(existing)
+    session.commit()
+
+    async def fake_fetch(provider, code):
+        return oauth_module.OAuthUserInfo(
+            provider_id="google-456",
+            email="link@example.com",
+            email_verified=True,
+            username_base="linkuser",
+        )
+
+    monkeypatch.setattr(oauth_module, "fetch_userinfo", fake_fetch)
+
+    state = _google_state()
+    response = anon_client.get(
+        "/auth/oauth/google/callback",
+        params={"code": "valid-code", "state": state},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert "token=" in response.headers["location"]
+
+
+def test_oauth_callback_rejects_invalid_state(anon_client):
+    response = anon_client.get(
+        "/auth/oauth/google/callback",
+        params={"code": "valid-code", "state": "invalid-state"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == (
+        "http://localhost:3000/oauth/callback?error=invalid_state"
+    )
+
+
+def test_oauth_callback_rejects_missing_code(anon_client):
+    state = _google_state()
+    response = anon_client.get(
+        "/auth/oauth/google/callback",
+        params={"state": state},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert "error=missing_oauth_parameters" in response.headers["location"]

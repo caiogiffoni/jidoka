@@ -335,6 +335,8 @@ Key rules:
 
 ### Tables
 
+- `users` — accounts. OAuth users have `hashed_password = NULL` and store the
+  provider identity in `oauth_provider` + `oauth_provider_id`.
 - `tasks` — kanban cards.
 - `projects` — optional time-tracking buckets.
 - `work_blocks` — completed focus/manual work sessions on a task.
@@ -348,6 +350,8 @@ Fixed literal values: `backlog`, `todo`, `in_progress`, `done`.
 | Endpoint | Purpose |
 |----------|---------|
 | `GET /health` | Liveness check |
+| `GET /auth/oauth/{provider}` | Start OAuth sign-in (`google` or `github`) |
+| `GET /auth/oauth/{provider}/callback` | Provider callback; redirects to frontend with JWT |
 | `GET /tasks` | List tasks; `?include_archived=true` includes archived |
 | `POST /tasks` | Create a task |
 | `PATCH /tasks/{id}` | Full replace update (title, description, project_id, checklist, due_date) |
@@ -411,17 +415,17 @@ them silently clears the field.
 
 ## 10. Security considerations
 
-- **No auth yet.** The app assumes a single user. Do not build production
-  multi-tenant features before auth lands.
+- **Auth is implemented.** FastAPI issues/verifies HS256 JWTs; Next.js stores
+  them in an HttpOnly cookie. OAuth users (`google`, `github`) have no password.
 - **FastAPI is the single writer to Postgres.** Next.js Server Actions proxy
   mutations; they do not touch the DB directly.
 - **Input validation** is done via Pydantic/SQLModel on the backend; invalid
   payloads return `422`.
-- **No secrets in the repo.** `.env` files are gitignored. The Docker Compose
-  setup uses hardcoded local dev credentials only.
+- **No secrets in the repo.** `.env` files are gitignored; OAuth client secrets
+  and `JWT_SECRET_KEY` must be set in the environment.
 - Backend `DATABASE_URL` can be overridden by environment.
-- Do not expose backend endpoints to the browser directly except for the future
-  agent streaming endpoint.
+- Do not expose backend endpoints to the browser directly except for the OAuth
+  initiation/callback flow and the future agent streaming endpoint.
 
 ---
 
