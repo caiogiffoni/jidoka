@@ -5,7 +5,7 @@ from typing import Literal
 
 from blocked_usernames import PROFANE_USERNAMES
 from pydantic import EmailStr, field_serializer, model_validator
-from sqlalchemy import JSON, Column
+from sqlalchemy import JSON, Column, UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
 ColumnId = Literal["backlog", "todo", "in_progress", "done"]
@@ -62,11 +62,16 @@ def _validate_password(value: str) -> str:
 
 class User(SQLModel, table=True):
     __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("oauth_provider", "oauth_provider_id"),
+    )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     email: EmailStr = Field(unique=True, index=True)
     username: str = Field(unique=True, index=True)
-    hashed_password: str
+    hashed_password: str | None = None
+    oauth_provider: str | None = None
+    oauth_provider_id: str | None = None
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
