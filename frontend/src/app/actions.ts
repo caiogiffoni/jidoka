@@ -440,6 +440,16 @@ export async function register(
   redirect("/board");
 }
 
+export async function setAuthToken(
+  token: string,
+): Promise<AuthActionState> {
+  if (!token) {
+    return { type: "error", message: "Missing token." };
+  }
+  await setAuthCookie(token);
+  return { type: "success", message: "Signed in." };
+}
+
 export async function logout(): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.delete(AUTH_COOKIE);
