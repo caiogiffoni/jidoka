@@ -141,6 +141,26 @@ describe("ChatPanel", () => {
     expect(approve).toHaveBeenCalled();
   });
 
+  it("renders an update_task proposed diff", () => {
+    mockUseAgent.mockReturnValue({
+      messages: [],
+      pendingDiff: {
+        changes: [{ type: "update_task", title: "Wire HITL flow", project_name: "Alpha" }],
+      },
+      status: "waiting",
+      error: null,
+      send: vi.fn(),
+      approve: vi.fn(),
+      reject: vi.fn(),
+    });
+
+    render(<ChatPanel open onOpenChange={() => {}} />);
+
+    expect(screen.getByText(/update/i)).toBeInTheDocument();
+    expect(screen.getByText("Wire HITL flow")).toBeInTheDocument();
+    expect(screen.getByText("Alpha")).toBeInTheDocument();
+  });
+
   it("displays an error message when the hook reports an error", () => {
     mockUseAgent.mockReturnValue({
       messages: [],
