@@ -507,6 +507,109 @@ class TestAgentGraphHitlFlow:
         assert "Alpha task" in content
 
 
+class TestUpdateTaskHitlFlow:
+    """update_task goes through the same propose → approve → apply flow."""
+
+    def test_update_task_goes_through_hitl_approval(self, session, test_user):
+        """The agent can get a task, propose an update, and apply it on approval."""
+        from langgraph.types import Command
+        from services import create_task_service
+        from models import TaskCreate
+
+        task = create_task_service(
+            session, test_user.id, TaskCreate(title="Wire HITL", column_id="todo")
+        )
+        thread_id = str(uuid.uuid4())
+        config = {
+            "configurable": {
+                "thread_id": thread_id,
+                "user_id": str(test_user.id),
+                "session": session,
+            }
+        }
+
+        graph = build_graph(
+            model=QueueFakeModel(
+                responses=[
+                    _tool_call("get_task", {"task_id": str(task.id)}),
+                    _tool_call(
+                        "update_task",
+                        {"task_id": str(task.id), "description": "Updated via agent"},
+                    ),
+                ]
+            )
+        )
+
+        result = graph.invoke(
+            {"messages": [{"role": "user", "content": "Add a description to Wire HITL"}]},
+            config=config,
+        )
+
+        interrupt_value = result["__interrupt__"][0].value
+        diff = interrupt_value["diff"]
+        assert len(diff.changes) == 1
+        update_change = diff.changes[0]
+        assert update_change.type == "update_task"
+        assert update_change.title == "Wire HITL"
+        assert update_change.description == "Updated via agent"
+
+        final_state = graph.invoke(Command(resume={"approved": True}), config=config)
+        updated = final_state["applied_updated_results"]
+        assert len(updated) == 1
+        assert updated[0]["id"] == str(task.id)
+        assert updated[0]["description"] == "Updated via agent"
+
+    def test_update_task_preserves_omitted_fields(self, session, test_user):
+        """Omitted fields are filled from the current task before proposing."""
+        from services import create_task_service
+        from models import TaskCreate, ChecklistItem
+        from datetime import date
+
+        task = create_task_service(
+            session,
+            test_user.id,
+            TaskCreate(
+                title="Wire HITL",
+                column_id="todo",
+                description="Original",
+                checklist=[ChecklistItem(text="step 1", checked=True)],
+            ),
+        )
+        task.due_date = date(2026, 8, 15)
+        session.add(task)
+        session.commit()
+        session.refresh(task)
+
+        graph = build_graph(
+            model=QueueFakeModel(
+                responses=[
+                    _tool_call(
+                        "update_task",
+                        {"task_id": str(task.id), "title": "Wire HITL v2"},
+                    ),
+                ]
+            )
+        )
+        result = graph.invoke(
+            {"messages": [{"role": "user", "content": "Rename the task"}]},
+            config={
+                "configurable": {
+                    "thread_id": str(uuid.uuid4()),
+                    "user_id": str(test_user.id),
+                    "session": session,
+                }
+            },
+        )
+
+        interrupt_value = result["__interrupt__"][0].value
+        diff = interrupt_value["diff"]
+        update_change = diff.changes[0]
+        assert update_change.title == "Wire HITL v2"
+        assert update_change.description == "Original"
+        assert update_change.checklist == [ChecklistItem(text="step 1", checked=True)]
+        assert update_change.due_date == date(2026, 8, 15)
+
+
 class TestDefaultModel:
     """Coverage for the production LLM factory that mutmut otherwise flags."""
 
@@ -578,4 +681,4 @@ class TestDefaultModel:
                 _default_model()
 
         names = {t.name for t in captured["tools"]}
-        assert names == {"create_task", "move_task", "list_tasks", "list_projects", "get_task"}
+        assert names == {"create_task", "move_task", "update_task", "list_tasks", "list_projects", "get_task"}

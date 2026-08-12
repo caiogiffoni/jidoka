@@ -16,6 +16,7 @@ from agent.state import (
     CreateTaskChange,
     MoveTaskChange,
     ProposedDiff,
+    UpdateTaskChange,
 )
 from models import ChecklistItem
 
@@ -134,6 +135,64 @@ class TestMoveTaskChange:
             )
 
 
+class TestUpdateTaskChange:
+    """An UpdateTaskChange is the unit of proposed task edit."""
+
+    def test_happy_path(self):
+        task_id = uuid.uuid4()
+        change = UpdateTaskChange(
+            task_id=task_id,
+            title="Wire HITL flow",
+            description="End-to-end approval stream",
+        )
+        assert change.task_id == task_id
+        assert change.title == "Wire HITL flow"
+        assert change.description == "End-to-end approval stream"
+        assert change.project_id is None
+        assert change.checklist == []
+        assert change.due_date is None
+        assert change.type == "update_task"
+
+    def test_all_fields_persist(self):
+        task_id = uuid.uuid4()
+        project_id = uuid.uuid4()
+        from datetime import date
+
+        change = UpdateTaskChange(
+            task_id=task_id,
+            title="Wire HITL flow",
+            description="End-to-end approval stream",
+            project_id=project_id,
+            checklist=[ChecklistItem(text="build graph", checked=False)],
+            due_date=date(2026, 8, 15),
+        )
+        assert change.project_id == project_id
+        assert change.checklist == [ChecklistItem(text="build graph", checked=False)]
+        assert change.due_date == date(2026, 8, 15)
+
+    @pytest.mark.parametrize("raw", ["", "   ", "\t\n"])
+    def test_blank_title_is_rejected(self, raw):
+        with pytest.raises(ValidationError):
+            UpdateTaskChange(task_id=uuid.uuid4(), title=raw)
+
+    def test_blank_checklist_items_are_stripped(self):
+        task_id = uuid.uuid4()
+        change = UpdateTaskChange(
+            task_id=task_id,
+            title="Wire HITL flow",
+            checklist=[
+                ChecklistItem(text="build graph", checked=False),
+                ChecklistItem(text="   ", checked=False),
+                ChecklistItem(text="", checked=False),
+                ChecklistItem(text="write tests", checked=True),
+            ],
+        )
+        assert change.checklist == [
+            ChecklistItem(text="build graph", checked=False),
+            ChecklistItem(text="write tests", checked=True),
+        ]
+
+
 class TestProposedDiff:
     """A ProposedDiff wraps one or more changes presented to the user."""
 
@@ -167,9 +226,23 @@ class TestProposedDiff:
         assert len(diff.changes) == 1
         assert diff.changes[0].type == "move_task"
 
+    def test_diff_can_hold_update_changes(self):
+        task_id = uuid.uuid4()
+        diff = ProposedDiff(
+            changes=[
+                UpdateTaskChange(
+                    task_id=task_id,
+                    title="Wire HITL flow",
+                    description="updated",
+                )
+            ]
+        )
+        assert len(diff.changes) == 1
+        assert diff.changes[0].type == "update_task"
+
 
 class TestAppliedResult:
-    """An AppliedResult records what the apply node actually created or moved."""
+    """An AppliedResult records what the apply node actually created, moved, or updated."""
 
     def test_result_can_hold_created_tasks(self):
         result = AppliedResult(created_tasks=[])
@@ -178,6 +251,10 @@ class TestAppliedResult:
     def test_result_can_hold_moved_tasks(self):
         result = AppliedResult(moved_tasks=[])
         assert result.moved_tasks == []
+
+    def test_result_can_hold_updated_tasks(self):
+        result = AppliedResult(updated_tasks=[])
+        assert result.updated_tasks == []
 
 
 class TestAgentState:
@@ -190,6 +267,7 @@ class TestAgentState:
             approved=None,
             applied_results=[],
             applied_moved_results=[],
+            applied_updated_results=[],
         )
         assert state["approved"] is None
         assert len(state["proposed_changes"]) == 1

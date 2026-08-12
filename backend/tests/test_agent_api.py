@@ -17,7 +17,7 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 import importlib
 
 graph_module = importlib.import_module("agent.graph")
-from agent.state import CreateTaskChange, MoveTaskChange
+from agent.state import CreateTaskChange, MoveTaskChange, UpdateTaskChange
 
 
 def _parse_sse(response_text: str) -> list[dict[str, Any]]:
@@ -296,3 +296,47 @@ def test_approved_multi_move_emits_all_titles(client, queued_graph):
     assert len(apply_events) == 1
     moved = apply_events[0]["data"]["moved_tasks"]
     assert {t["title"] for t in moved} == set(titles)
+
+
+def test_conversation_gets_task_then_proposes_update(client, queued_graph):
+    """The agent reads a task, then proposes updating it."""
+    task_res = client.post(
+        "/tasks",
+        json={"title": "Wire HITL", "column_id": "todo"},
+    )
+    assert task_res.status_code == 201
+    task = task_res.json()
+
+    thread_id = str(uuid.uuid4())
+
+    # Turn 1: agent reads the task.
+    graph_module.model = QueueFakeModel(
+        responses=[_tool_call("get_task", {"task_id": task["id"]})]
+    )
+    res1 = client.post(
+        "/agent/stream",
+        json={"thread_id": thread_id, "message": "Update the description of Wire HITL"},
+    )
+    events1 = _parse_sse(res1.text)
+    assert not any(ev["event"] == "interrupt" for ev in events1)
+
+    # Turn 2: agent proposes the update.
+    graph_module.model = QueueFakeModel(
+        responses=[
+            _tool_call(
+                "update_task",
+                {"task_id": task["id"], "description": "Updated via agent"},
+            )
+        ]
+    )
+    res2 = client.post(
+        "/agent/stream",
+        json={"thread_id": thread_id, "message": "Set it to Updated via agent"},
+    )
+    events2 = _parse_sse(res2.text)
+
+    interrupt_events = [ev for ev in events2 if ev["event"] == "interrupt"]
+    assert len(interrupt_events) == 1
+    change = UpdateTaskChange(**interrupt_events[0]["data"]["changes"][0])
+    assert change.title == "Wire HITL"
+    assert change.description == "Updated via agent"

@@ -9,7 +9,7 @@ import uuid
 
 import pytest
 
-from agent.tools import create_task, get_task, list_projects, list_tasks, move_task
+from agent.tools import create_task, get_task, list_projects, list_tasks, move_task, update_task
 from models import ChecklistItem
 
 
@@ -103,6 +103,64 @@ class TestMoveTaskTool:
     def test_malformed_task_id_is_rejected(self):
         with pytest.raises(ValueError):
             move_task(task_id="not-a-uuid", column_id="todo")
+
+
+class TestUpdateTaskTool:
+    """update_task proposes an edit to an existing task."""
+
+    def test_returns_update_task_change(self):
+        task_id = str(uuid.uuid4())
+        result = update_task(task_id=task_id, description="Updated description")
+        assert result["type"] == "update_task"
+        assert result["task_id"] == uuid.UUID(task_id)
+        assert result["description"] == "Updated description"
+        assert "title" not in result
+
+    def test_accepts_all_arguments(self):
+        task_id = str(uuid.uuid4())
+        project_id = uuid.uuid4()
+        result = update_task(
+            task_id=task_id,
+            title="New title",
+            description="Updated description",
+            project_id=str(project_id),
+            checklist=[{"text": "build graph", "checked": False}],
+            due_date="2026-08-15",
+        )
+        assert result["title"] == "New title"
+        assert result["description"] == "Updated description"
+        assert result["project_id"] == project_id
+        assert result["checklist"] == [ChecklistItem(text="build graph", checked=False)]
+        from datetime import date
+
+        assert result["due_date"] == date(2026, 8, 15)
+
+    def test_no_database_side_effect(self, session, test_user):
+        """The tool must never write to the DB."""
+        from sqlmodel import select
+
+        from models import Task
+
+        before = session.exec(select(Task)).all()
+        update_task(task_id=str(uuid.uuid4()), description="Updated description")
+        after = session.exec(select(Task)).all()
+        assert before == after
+
+    def test_blank_checklist_items_are_stripped(self):
+        task_id = str(uuid.uuid4())
+        result = update_task(
+            task_id=task_id,
+            checklist=[
+                {"text": "build graph", "checked": False},
+                {"text": "", "checked": False},
+                {"text": "   ", "checked": False},
+            ],
+        )
+        assert result["checklist"] == [ChecklistItem(text="build graph", checked=False)]
+
+    def test_malformed_task_id_is_rejected(self):
+        with pytest.raises(ValueError):
+            update_task(task_id="not-a-uuid", description="Updated description")
 
 
 class TestListTasksTool:
