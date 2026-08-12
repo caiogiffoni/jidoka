@@ -15,6 +15,7 @@ from services import (
     get_task_or_404,
     move_task_service,
     reindex,
+    update_task_service,
 )
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -52,18 +53,7 @@ def update_task(
     current_user: User = Depends(auth.get_current_user),
     session: Session = Depends(get_session),
 ):
-    task = get_task_or_404(session, task_id, current_user.id)
-    if payload.project_id is not None:
-        get_project_or_404(session, payload.project_id, current_user.id)
-    task.title = payload.title
-    task.description = payload.description
-    task.project_id = payload.project_id
-    task.checklist = [item.model_dump() for item in payload.checklist]
-    task.due_date = payload.due_date
-    session.add(task)
-    session.commit()
-    session.refresh(task)
-    return task
+    return update_task_service(session, current_user.id, task_id, payload)
 
 
 @router.patch("/{task_id}/move", response_model=Task)

@@ -12,7 +12,7 @@ from sqlmodel import Session, select
 
 import auth
 from db import get_session
-from models import Project, Task, TaskCreate
+from models import Project, Task, TaskCreate, TaskUpdate
 
 
 def get_task_or_404(
@@ -149,6 +149,30 @@ def move_task_service(
     return task
 
 
+def update_task_service(
+    session: Session,
+    user_id: uuid.UUID,
+    task_id: uuid.UUID,
+    payload: TaskUpdate,
+) -> Task:
+    """Update a task using the same logic as the manual PATCH /tasks/{id} endpoint.
+
+    Extracted so the agent's apply node and the API share one code path.
+    """
+    task = get_task_or_404(session, task_id, user_id)
+    if payload.project_id is not None:
+        get_project_or_404(session, payload.project_id, user_id)
+    task.title = payload.title
+    task.description = payload.description
+    task.project_id = payload.project_id
+    task.checklist = [item.model_dump() for item in payload.checklist]
+    task.due_date = payload.due_date
+    session.add(task)
+    session.commit()
+    session.refresh(task)
+    return task
+
+
 __all__ = [
     "auth",
     "get_session",
@@ -161,4 +185,5 @@ __all__ = [
     "get_task_service",
     "list_projects_service",
     "move_task_service",
+    "update_task_service",
 ]
