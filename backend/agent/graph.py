@@ -32,6 +32,7 @@ from agent.state import (
     CreateTaskChange,
     MoveTaskChange,
     ProposedDiff,
+    UpdateTaskChange,
 )
 from agent.tools import (
     create_task_tool,
@@ -39,19 +40,21 @@ from agent.tools import (
     list_projects_tool,
     list_tasks_tool,
     move_task_tool,
+    update_task_tool,
 )
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
-from models import Project, TaskCreate
+from models import Project, TaskCreate, TaskUpdate
 from services import (
     create_task_service,
     get_task_service,
     list_projects_service,
     list_tasks_service,
     move_task_service,
+    update_task_service,
 )
 
 
@@ -63,12 +66,13 @@ _SYSTEM_PROMPT = (
     "You have these tools:\n"
     "- create_task(title, column_id, description?, project_id?, checklist?)\n"
     "- move_task(task_id, column_id, position?)\n"
+    "- update_task(task_id, title?, description?, project_id?, checklist?, due_date?)\n"
     "- list_tasks(column_id?, include_archived?, project_id?, project_name?)\n"
     "- list_projects()\n"
     "- get_task(task_id)\n\n"
     "CRITICAL RULES:\n"
     "1. Read the full conversation history. Remember everything the user already told you.\n"
-    "2. create_task and move_task REQUIRE human approval. They produce a proposed diff. "
+    "2. create_task, move_task, and update_task REQUIRE human approval. They produce a proposed diff. "
     "Do not tell the user the change is done until they approve it.\n"
     "3. list_tasks, list_projects, and get_task return board data immediately. "
     "Use them whenever you need to know what exists on the board.\n"
@@ -85,6 +89,8 @@ _SYSTEM_PROMPT = (
     "- User: 'Create a task Read docs in todo' → create_task(title='Read docs', column_id='todo')\n"
     "- User: 'Move the top backlog item to todo' → list_tasks(column_id='backlog'), "
     "then move_task(task_id=<first id>, column_id='todo')\n"
+    "- User: 'Update task abc123 description to Follow up tomorrow' → get_task(task_id='abc123'), "
+    "then update_task(task_id='abc123', description='Follow up tomorrow')\n"
     "- User: 'What do I have in progress?' → list_tasks(column_id='in_progress'), then summarize\n"
     "- User: 'Move all tasks from project X to done' → list_tasks(project_name='X'), "
     "then call move_task once per returned task\n"
@@ -98,7 +104,7 @@ def _default_model():
         base_url="https://openrouter.ai/api/v1",
         api_key=os.environ.get("OPENROUTER_API_KEY"),
         model=os.environ.get("OPENROUTER_MODEL") or "openai/gpt-4o-mini",
-    ).bind_tools([create_task_tool, move_task_tool, list_tasks_tool, list_projects_tool, get_task_tool])
+    ).bind_tools([create_task_tool, move_task_tool, update_task_tool, list_tasks_tool, list_projects_tool, get_task_tool])
 
 
 def _resolve_model(explicit_model):
@@ -242,6 +248,27 @@ def build_graph(model=None):
                         to_column_id=parsed["column_id"],
                         project_name=task.project.name if task.project else None,
                         position=parsed.get("position"),
+                    )
+                )
+                tool_messages.append(
+                    ToolMessage(content="proposed", tool_call_id=tool_call_id)
+                )
+            elif name == "update_task":
+                parsed = update_task_tool.invoke(args)
+                task = get_task_service(session, parsed["task_id"], user_id)
+                project_id = parsed.get("project_id")
+                if project_id is None:
+                    project_id = task.project_id
+                project_name = _project_name(session, project_id)
+                changes.append(
+                    UpdateTaskChange(
+                        task_id=task.id,
+                        title=parsed.get("title", task.title),
+                        description=parsed.get("description", task.description),
+                        project_id=project_id,
+                        project_name=project_name,
+                        checklist=parsed.get("checklist", task.checklist or []),
+                        due_date=parsed.get("due_date", task.due_date),
                     )
                 )
                 tool_messages.append(

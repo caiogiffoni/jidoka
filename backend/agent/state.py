@@ -5,6 +5,7 @@ and the frontend diff approval UI.
 """
 
 import uuid
+from datetime import date
 from typing import Annotated, Literal, TypedDict, Union
 
 from langgraph.graph.message import add_messages
@@ -53,7 +54,33 @@ class MoveTaskChange(SQLModel):
         return self
 
 
-BoardChange = Union[CreateTaskChange, MoveTaskChange]
+class UpdateTaskChange(SQLModel):
+    """A single proposed update_task change presented to the user for approval.
+
+    The tool may supply only the fields the user wants to change; the graph's
+    tool_node merges in the current task state so this change carries the full
+    payload required by the full-replace PATCH endpoint.
+    """
+
+    type: Literal["update_task"] = "update_task"
+    task_id: uuid.UUID
+    title: str
+    description: str | None = None
+    project_id: uuid.UUID | None = None
+    project_name: str | None = None
+    checklist: list[ChecklistItem] = Field(default_factory=list)
+    due_date: date | None = None
+
+    @model_validator(mode="after")
+    def validate(self) -> "UpdateTaskChange":
+        self.title = self.title.strip()
+        if not self.title:
+            raise ValueError("title cannot be blank")
+        self.checklist = _strip_blank_checklist_items(self.checklist)
+        return self
+
+
+BoardChange = Union[CreateTaskChange, MoveTaskChange, UpdateTaskChange]
 
 
 class ProposedDiff(SQLModel):
@@ -67,6 +94,7 @@ class AppliedResult(SQLModel):
 
     created_tasks: list[Task] = Field(default_factory=list)
     moved_tasks: list[Task] = Field(default_factory=list)
+    updated_tasks: list[Task] = Field(default_factory=list)
 
 
 class AgentState(TypedDict):
@@ -85,4 +113,5 @@ class AgentState(TypedDict):
     # serialization issues when LangGraph checkpoints the state.
     applied_results: list[dict]
     applied_moved_results: list[dict]
+    applied_updated_results: list[dict]
     draft: dict | None

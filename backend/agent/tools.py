@@ -9,6 +9,7 @@ Tools are split into two categories:
 """
 
 import uuid
+from datetime import date
 
 from langchain_core.tools import tool
 
@@ -85,6 +86,57 @@ def move_task(
     }
 
 
+def update_task(
+    task_id: str,
+    title: str | None = None,
+    description: str | None = None,
+    project_id: str | uuid.UUID | None = None,
+    checklist: list[dict] | None = None,
+    due_date: str | date | None = None,
+) -> dict:
+    """Propose updating an existing task.
+
+    Only the supplied fields are changed; the graph's tool_node fetches the
+    current task and fills in omitted fields before building the UpdateTaskChange.
+    """
+    parsed_task_id = uuid.UUID(task_id)
+
+    parsed_project_id: uuid.UUID | None = None
+    if project_id is not None:
+        parsed_project_id = (
+            project_id if isinstance(project_id, uuid.UUID) else uuid.UUID(project_id)
+        )
+
+    items: list[ChecklistItem] | None = None
+    if checklist is not None:
+        items = _strip_blank_checklist_items(
+            [ChecklistItem(**item) for item in checklist]
+        )
+
+    parsed_due_date: date | None = None
+    if due_date is not None:
+        if isinstance(due_date, date):
+            parsed_due_date = due_date
+        else:
+            parsed_due_date = date.fromisoformat(due_date)
+
+    result: dict = {
+        "type": "update_task",
+        "task_id": parsed_task_id,
+    }
+    if title is not None:
+        result["title"] = title
+    if description is not None:
+        result["description"] = description
+    if parsed_project_id is not None:
+        result["project_id"] = parsed_project_id
+    if items is not None:
+        result["checklist"] = items
+    if parsed_due_date is not None:
+        result["due_date"] = parsed_due_date
+    return result
+
+
 def list_tasks(
     column_id: str | None = None,
     include_archived: bool = False,
@@ -135,6 +187,7 @@ def get_task(task_id: str) -> dict:
 # LangChain tool schemas used for LLM binding and invocation.
 create_task_tool = tool("create_task", description=create_task.__doc__)(create_task)
 move_task_tool = tool("move_task", description=move_task.__doc__)(move_task)
+update_task_tool = tool("update_task", description=update_task.__doc__)(update_task)
 list_tasks_tool = tool("list_tasks", description=list_tasks.__doc__)(list_tasks)
 list_projects_tool = tool("list_projects", description=list_projects.__doc__)(list_projects)
 get_task_tool = tool("get_task", description=get_task.__doc__)(get_task)
