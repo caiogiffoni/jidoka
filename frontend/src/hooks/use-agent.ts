@@ -10,7 +10,7 @@ interface Message {
 }
 
 interface Change {
-  type: "create_task" | "move_task";
+  type: "create_task" | "move_task" | "update_task";
   title: string;
   column_id?: string;
   description?: string;
@@ -97,11 +97,16 @@ export function useAgent({ onApply }: UseAgentOptions = {}) {
             setMessages((prev) => [...prev, { role: "assistant", content: msg.content }]);
           }
         } else if (event === "apply") {
-          const { created_tasks: created = [], moved_tasks: moved = [] } = data as {
+          const {
+            created_tasks: created = [],
+            moved_tasks: moved = [],
+            updated_tasks: updated = [],
+          } = data as {
             created_tasks?: AppliedTask[];
             moved_tasks?: AppliedTask[];
+            updated_tasks?: AppliedTask[];
           };
-          onApply?.([...created, ...moved]);
+          onApply?.([...created, ...moved, ...updated]);
           sawInterruptRef.current = false;
           setPendingDiff(null);
           setStatus("idle");
@@ -117,6 +122,9 @@ export function useAgent({ onApply }: UseAgentOptions = {}) {
           }
           if (moved.length > 0) {
             parts.push(`Moved: ${formatTasks(moved)}`);
+          }
+          if (updated.length > 0) {
+            parts.push(`Updated: ${formatTasks(updated)}`);
           }
           const content = parts.length > 0 ? parts.join(". ") : "Changes cancelled.";
           setMessages((prev) => [...prev, { role: "assistant", content: content }]);

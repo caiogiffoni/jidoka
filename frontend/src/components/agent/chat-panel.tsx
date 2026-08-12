@@ -73,6 +73,15 @@ export function ChatPanel({ open, onOpenChange, onApply }: ChatPanelProps) {
                           </Badge>
                         )}
                       </>
+                    ) : change.type === "update_task" ? (
+                      <>
+                        Update <span className="font-medium">{change.title}</span>
+                        {change.project_name && (
+                          <Badge variant="secondary" className="ml-2">
+                            {change.project_name}
+                          </Badge>
+                        )}
+                      </>
                     ) : (
                       <>
                         Move <span className="font-medium">{change.title}</span>
