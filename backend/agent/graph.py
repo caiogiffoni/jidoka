@@ -331,6 +331,7 @@ def build_graph(model=None):
             return {
                 "applied_results": [],
                 "applied_moved_results": [],
+                "applied_updated_results": [],
                 "draft": None,
             }
 
@@ -341,6 +342,7 @@ def build_graph(model=None):
         try:
             created: list = []
             moved: list = []
+            updated: list = []
             for change in state.get("proposed_changes", []):
                 if isinstance(change, CreateTaskChange):
                     task = create_task_service(
@@ -366,11 +368,26 @@ def build_graph(model=None):
                         change.position,
                     )
                     moved.append(_json_safe(task.model_dump()))
+                elif isinstance(change, UpdateTaskChange):
+                    task = update_task_service(
+                        session,
+                        user_id,
+                        change.task_id,
+                        TaskUpdate(
+                            title=change.title,
+                            description=change.description,
+                            project_id=change.project_id,
+                            checklist=change.checklist,
+                            due_date=change.due_date,
+                        ),
+                    )
+                    updated.append(_json_safe(task.model_dump()))
                 else:
                     raise ValueError(f"unsupported change type: {type(change)}")
             return {
                 "applied_results": created,
                 "applied_moved_results": moved,
+                "applied_updated_results": updated,
                 "draft": None,
             }
         finally:

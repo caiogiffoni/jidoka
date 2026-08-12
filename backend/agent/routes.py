@@ -71,12 +71,14 @@ def _translate_chunk(chunk: dict) -> list[tuple[str, Any]]:
             # checkpoint does not have to handle SQLAlchemy objects.
             created = update.get("applied_results", [])
             moved = update.get("applied_moved_results", [])
+            updated = update.get("applied_updated_results", [])
             events.append(
                 (
                     "apply",
                     {
                         "created_tasks": list(created),
                         "moved_tasks": list(moved),
+                        "updated_tasks": list(updated),
                     },
                 )
             )
