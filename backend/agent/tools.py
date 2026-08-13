@@ -120,12 +120,15 @@ def update_task(
         else:
             parsed_due_date = date.fromisoformat(due_date)
 
+    if title is not None and not title.strip():
+        raise ValueError("title cannot be blank")
+
     result: dict = {
         "type": "update_task",
         "task_id": parsed_task_id,
     }
     if title is not None:
-        result["title"] = title
+        result["title"] = title.strip()
     if description is not None:
         result["description"] = description
     if parsed_project_id is not None:

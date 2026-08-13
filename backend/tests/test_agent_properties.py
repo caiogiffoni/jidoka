@@ -5,9 +5,13 @@ invariants hold across the input space.
 """
 
 import uuid
+from typing import Any
 
 import pytest
 from hypothesis import HealthCheck, given, settings, strategies as st
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import AIMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
 from langgraph.types import Command
 
 from agent.graph import build_graph
@@ -133,6 +137,33 @@ class TestUpdateTaskToolProperties:
             update_task(task_id="not-a-uuid", description="Updated description")
 
 
+class FakeUpdateToolModel(BaseChatModel):
+    """A deterministic LLM that calls update_task with the supplied args."""
+
+    tool_args: dict[str, Any]
+
+    @property
+    def _llm_type(self) -> str:
+        return "fake_update_tool_model"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        tool_call = {
+            "id": "call_1",
+            "name": "update_task",
+            "args": self.tool_args,
+        }
+        message = AIMessage(content="", tool_calls=[tool_call])
+        generation = ChatGeneration(message=message)
+        return ChatResult(generations=[generation], llm_output={})
+
+    async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+        raise NotImplementedError
+
+    @property
+    def _identifying_params(self) -> dict[str, Any]:
+        return {"tool_args": self.tool_args}
+
+
 class TestApprovedUpdateChangeProperties:
     """Invariants of the apply node when updating tasks."""
 
@@ -151,7 +182,7 @@ class TestApprovedUpdateChangeProperties:
         task = create_task_service(
             session, test_user.id, TaskCreate(title="Original", column_id="todo")
         )
-        model = FakeToolCallingModel(
+        model = FakeUpdateToolModel(
             tool_args={"task_id": str(task.id), "title": title}
         )
         graph = build_graph(model=model)
