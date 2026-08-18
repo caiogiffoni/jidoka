@@ -2,6 +2,7 @@
 
 import * as React from "react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -60,10 +61,40 @@ export function ChatPanel({ open, onOpenChange, onApply }: ChatPanelProps) {
               <ul className="mt-2 space-y-2">
                 {pendingDiff.changes.map((change, index) => (
                   <li key={index} className="text-sm">
-                    <span className="font-medium">{change.title}</span>
-                    <span className="text-muted-foreground ml-2">
-                      {change.column_id}
-                    </span>
+                    {change.type === "create_task" ? (
+                      <>
+                        <span className="font-medium">{change.title}</span>
+                        <span className="text-muted-foreground ml-2">
+                          {change.column_id}
+                        </span>
+                        {change.project_name && (
+                          <Badge variant="secondary" className="ml-2">
+                            {change.project_name}
+                          </Badge>
+                        )}
+                      </>
+                    ) : change.type === "update_task" ? (
+                      <>
+                        Update <span className="font-medium">{change.title}</span>
+                        {change.project_name && (
+                          <Badge variant="secondary" className="ml-2">
+                            {change.project_name}
+                          </Badge>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        Move <span className="font-medium">{change.title}</span>
+                        <span className="text-muted-foreground ml-2">
+                          {change.from_column_id} → {change.to_column_id}
+                        </span>
+                        {change.project_name && (
+                          <Badge variant="secondary" className="ml-2">
+                            {change.project_name}
+                          </Badge>
+                        )}
+                      </>
+                    )}
                   </li>
                 ))}
               </ul>

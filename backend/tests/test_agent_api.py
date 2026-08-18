@@ -17,7 +17,7 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 import importlib
 
 graph_module = importlib.import_module("agent.graph")
-from agent.state import CreateTaskChange
+from agent.state import CreateTaskChange, MoveTaskChange, UpdateTaskChange
 
 
 def _parse_sse(response_text: str) -> list[dict[str, Any]]:
@@ -79,26 +79,25 @@ def _assistant(content: str) -> AIMessage:
     return AIMessage(content=content)
 
 
-def _create_task_tool_call(title: str, column_id: str) -> AIMessage:
+def _tool_call(name: str, args: dict) -> AIMessage:
     return AIMessage(
         content="",
-        tool_calls=[
-            {
-                "id": "call_1",
-                "name": "create_task",
-                "args": {"title": title, "column_id": column_id},
-            }
-        ],
+        tool_calls=[{"id": "call_1", "name": name, "args": args}],
     )
+
+
+def _create_task_tool_call(title: str, column_id: str) -> AIMessage:
+    return _tool_call("create_task", {"title": title, "column_id": column_id})
 
 
 def test_conversation_title_then_column(client, queued_graph):
     """Simulate: user gives title, then column, agent proposes task."""
     thread_id = str(uuid.uuid4())
 
-    # Turn 1 is deterministic: the agent extracts the title and asks for the
-    # column without calling the LLM.
-    graph_module.model = QueueFakeModel(responses=[])
+    # Turn 1: the LLM extracts the title and asks for the column.
+    graph_module.model = QueueFakeModel(
+        responses=[_assistant('Got it, title is "Work on my car". Which column?')]
+    )
     res1 = client.post(
         "/agent/stream",
         json={"thread_id": thread_id, "message": 'can you create a task "Work on my car"?'},
@@ -113,8 +112,10 @@ def test_conversation_title_then_column(client, queued_graph):
         for ev in events1
     )
 
-    # Turn 2 is also deterministic: the agent short-circuits to create_task.
-    graph_module.model = QueueFakeModel(responses=[])
+    # Turn 2: the LLM now has the full history and calls create_task.
+    graph_module.model = QueueFakeModel(
+        responses=[_create_task_tool_call("Work on my car", "in_progress")]
+    )
     res2 = client.post(
         "/agent/stream",
         json={"thread_id": thread_id, "message": "in_progress"},
@@ -137,8 +138,10 @@ def test_conversation_title_and_column_in_one_message(client, queued_graph):
     """Simulate: user gives title and column in one message."""
     thread_id = str(uuid.uuid4())
 
-    # Deterministic: the regex extracts both the quoted title and the column.
-    graph_module.model = QueueFakeModel(responses=[])
+    # The LLM extracts both pieces and calls create_task.
+    graph_module.model = QueueFakeModel(
+        responses=[_create_task_tool_call("Read docs", "todo")]
+    )
     res = client.post(
         "/agent/stream",
         json={"thread_id": thread_id, "message": "Create a task 'Read docs' in todo"},
@@ -155,15 +158,15 @@ def test_conversation_title_and_column_in_one_message(client, queued_graph):
     assert change.column_id == "todo"
 
 
-def test_short_circuit_uses_draft_on_second_turn(client, queued_graph):
-    """If the agent already knows the title, turn 2 must not call the LLM.
+def test_conversation_continues_with_llm_on_second_turn(client, queued_graph):
+    """A multi-turn conversation reaches the propose node via the LLM each turn.
 
-    The QueueFakeModel for turn 2 is empty; if the short-circuit does not fire,
-    the test fails because there is no LLM response to consume.
+    There is no deterministic short-circuit anymore, so the second turn must
+    also be handled by the mocked LLM.
     """
     thread_id = str(uuid.uuid4())
 
-    # Turn 1: agent extracts the title and asks for the column.
+    # Turn 1: the LLM asks for the column.
     graph_module.model = QueueFakeModel(
         responses=[_assistant('Got it, title is "Task 852". Which column?')]
     )
@@ -172,18 +175,20 @@ def test_short_circuit_uses_draft_on_second_turn(client, queued_graph):
         json={"thread_id": thread_id, "message": "can you create title = 'Task 852'."},
     )
     events1 = _parse_sse(res1.text)
-    print("\n--- Short-circuit turn 1 events ---")
+    print("\n--- Multi-turn turn 1 events ---")
     for ev in events1:
         print(ev)
 
-    # Turn 2: empty LLM queue. The code must call create_task from draft.
-    graph_module.model = QueueFakeModel(responses=[])
+    # Turn 2: the LLM is invoked again, this time calling create_task.
+    graph_module.model = QueueFakeModel(
+        responses=[_create_task_tool_call("Task 852", "backlog")]
+    )
     res2 = client.post(
         "/agent/stream",
         json={"thread_id": thread_id, "message": "backlog"},
     )
     events2 = _parse_sse(res2.text)
-    print("\n--- Short-circuit turn 2 events ---")
+    print("\n--- Multi-turn turn 2 events ---")
     for ev in events2:
         print(ev)
 
@@ -192,3 +197,146 @@ def test_short_circuit_uses_draft_on_second_turn(client, queued_graph):
     change = CreateTaskChange(**interrupt_events[0]["data"]["changes"][0])
     assert change.title == "Task 852"
     assert change.column_id == "backlog"
+
+
+def test_conversation_lists_tasks_then_proposes_move(client, queued_graph):
+    """The agent reads the board, then proposes moving an existing task."""
+    # Seed a task manually so the agent has something to move.
+    task_res = client.post(
+        "/tasks",
+        json={"title": "Wire HITL", "column_id": "todo"},
+    )
+    assert task_res.status_code == 201
+    task = task_res.json()
+
+    thread_id = str(uuid.uuid4())
+
+    # Turn 1: agent lists tasks in todo.
+    graph_module.model = QueueFakeModel(
+        responses=[_tool_call("list_tasks", {"column_id": "todo"})]
+    )
+    res1 = client.post(
+        "/agent/stream",
+        json={"thread_id": thread_id, "message": "What's in todo?"},
+    )
+    events1 = _parse_sse(res1.text)
+    print("\n--- List turn events ---")
+    for ev in events1:
+        print(ev)
+
+    # No approval requested for a read.
+    assert not any(ev["event"] == "interrupt" for ev in events1)
+
+    # Turn 2: agent proposes moving the listed task to done.
+    graph_module.model = QueueFakeModel(
+        responses=[_tool_call("move_task", {"task_id": task["id"], "column_id": "done"})]
+    )
+    res2 = client.post(
+        "/agent/stream",
+        json={"thread_id": thread_id, "message": "Move that task to done"},
+    )
+    events2 = _parse_sse(res2.text)
+    print("\n--- Move turn events ---")
+    for ev in events2:
+        print(ev)
+
+    interrupt_events = [ev for ev in events2 if ev["event"] == "interrupt"]
+    assert len(interrupt_events) == 1
+    change = MoveTaskChange(**interrupt_events[0]["data"]["changes"][0])
+    assert change.title == "Wire HITL"
+    assert change.from_column_id == "todo"
+    assert change.to_column_id == "done"
+
+
+def test_approved_multi_move_emits_all_titles(client, queued_graph):
+    """Moving several tasks in one diff surfaces every title in the apply event."""
+    titles = ["Alpha", "Beta", "Gamma"]
+    task_ids = []
+    for title in titles:
+        res = client.post("/tasks", json={"title": title, "column_id": "todo"})
+        assert res.status_code == 201
+        task_ids.append(res.json()["id"])
+
+    thread_id = str(uuid.uuid4())
+
+    # The current move_task tool only moves one task per call, so the LLM would
+    # need three separate tool calls for a real multi-move. We simulate that by
+    # having the fake LLM return three move_task calls in one AIMessage.
+    graph_module.model = QueueFakeModel(
+        responses=[
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {"id": "c1", "name": "move_task", "args": {"task_id": task_ids[0], "column_id": "done"}},
+                    {"id": "c2", "name": "move_task", "args": {"task_id": task_ids[1], "column_id": "done"}},
+                    {"id": "c3", "name": "move_task", "args": {"task_id": task_ids[2], "column_id": "done"}},
+                ],
+            )
+        ]
+    )
+    res1 = client.post(
+        "/agent/stream",
+        json={"thread_id": thread_id, "message": "move all tasks to done"},
+    )
+    events1 = _parse_sse(res1.text)
+
+    interrupt_events = [ev for ev in events1 if ev["event"] == "interrupt"]
+    assert len(interrupt_events) == 1
+    assert len(interrupt_events[0]["data"]["changes"]) == 3
+    assert {c["title"] for c in interrupt_events[0]["data"]["changes"]} == set(titles)
+
+    graph_module.model = QueueFakeModel(responses=[])
+    res2 = client.post(
+        "/agent/stream",
+        json={"thread_id": thread_id, "resume": {"approved": True}},
+    )
+    events2 = _parse_sse(res2.text)
+
+    apply_events = [ev for ev in events2 if ev["event"] == "apply"]
+    assert len(apply_events) == 1
+    moved = apply_events[0]["data"]["moved_tasks"]
+    assert {t["title"] for t in moved} == set(titles)
+
+
+def test_conversation_gets_task_then_proposes_update(client, queued_graph):
+    """The agent reads a task, then proposes updating it."""
+    task_res = client.post(
+        "/tasks",
+        json={"title": "Wire HITL", "column_id": "todo"},
+    )
+    assert task_res.status_code == 201
+    task = task_res.json()
+
+    thread_id = str(uuid.uuid4())
+
+    # Turn 1: agent reads the task.
+    graph_module.model = QueueFakeModel(
+        responses=[_tool_call("get_task", {"task_id": task["id"]})]
+    )
+    res1 = client.post(
+        "/agent/stream",
+        json={"thread_id": thread_id, "message": "Update the description of Wire HITL"},
+    )
+    events1 = _parse_sse(res1.text)
+    assert not any(ev["event"] == "interrupt" for ev in events1)
+
+    # Turn 2: agent proposes the update.
+    graph_module.model = QueueFakeModel(
+        responses=[
+            _tool_call(
+                "update_task",
+                {"task_id": task["id"], "description": "Updated via agent"},
+            )
+        ]
+    )
+    res2 = client.post(
+        "/agent/stream",
+        json={"thread_id": thread_id, "message": "Set it to Updated via agent"},
+    )
+    events2 = _parse_sse(res2.text)
+
+    interrupt_events = [ev for ev in events2 if ev["event"] == "interrupt"]
+    assert len(interrupt_events) == 1
+    change = UpdateTaskChange(**interrupt_events[0]["data"]["changes"][0])
+    assert change.title == "Wire HITL"
+    assert change.description == "Updated via agent"

@@ -16,16 +16,19 @@ export function TaskCard({
   columnId,
   overlay,
   onDelete,
+  disabled = false,
 }: {
   task: Task;
   columnId?: ColumnId;
   overlay?: boolean;
   onDelete?: () => void;
+  disabled?: boolean;
 }) {
   return (
     <Card
       className={cn(
-        "group relative cursor-grab gap-0 py-3 shadow-none transition-shadow duration-150 select-none hover:shadow-sm hover:ring-foreground/20",
+        "group relative gap-0 py-3 shadow-none transition-shadow duration-150 select-none hover:shadow-sm hover:ring-foreground/20",
+        !disabled && "cursor-grab",
         overlay && "cursor-grabbing rotate-2 shadow-lg ring-ring/40",
       )}
     >
@@ -104,10 +107,12 @@ export function SortableTaskCard({
   task,
   columnId,
   projects,
+  disabled = false,
 }: {
   task: Task;
   columnId: ColumnId;
   projects: Project[];
+  disabled?: boolean;
 }) {
   const {
     attributes,
@@ -116,7 +121,7 @@ export function SortableTaskCard({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: task.id });
+  } = useSortable({ id: task.id, disabled });
   const [open, setOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   // dnd-kit still fires a click on the card after a pointer drag ends;
@@ -171,6 +176,7 @@ export function SortableTaskCard({
           task={task}
           columnId={columnId}
           onDelete={() => setConfirmingDelete(true)}
+          disabled={disabled}
         />
       </div>
       <TaskDialog

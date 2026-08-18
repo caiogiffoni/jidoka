@@ -174,6 +174,12 @@ export async function generateDailyTasks(): Promise<{ created: number }> {
   const res = await apiFetch(`${BACKEND_URL}/projects/daily-tasks/generate`, {
     method: "POST",
   });
+  if (res.status === 401) {
+    // Expired or otherwise invalid session: force re-authentication rather
+    // than leaving the user on a broken page where every mutation 401s.
+    cookieStore.delete(AUTH_COOKIE);
+    redirect("/login");
+  }
   if (!res.ok) {
     throw new Error(`POST /projects/daily-tasks/generate failed: ${res.status}`);
   }
@@ -432,6 +438,16 @@ export async function register(
   const { token }: { token: string } = await res.json();
   await setAuthCookie(token);
   redirect("/board");
+}
+
+export async function setAuthToken(
+  token: string,
+): Promise<AuthActionState> {
+  if (!token) {
+    return { type: "error", message: "Missing token." };
+  }
+  await setAuthCookie(token);
+  return { type: "success", message: "Signed in." };
 }
 
 export async function logout(): Promise<void> {

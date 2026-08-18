@@ -15,16 +15,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 
-from agent.graph import (
-    _clean_title,
-    _default_model,
-    _detect_column,
-    _extract_quoted_title,
-    _looks_like_task_request,
-    _parse_message,
-    _update_draft,
-    build_graph,
-)
+from agent.graph import _default_model, build_graph
 
 from tests.agent_fakes import FakeToolCallingModel
 
@@ -34,14 +25,48 @@ def make_graph(tool_args):
     return build_graph(model=model)
 
 
+class QueueFakeModel(BaseChatModel):
+    """A fake LLM that returns queued AIMessages in order."""
+
+    responses: list[AIMessage]
+
+    @property
+    def _llm_type(self) -> str:
+        return "queue_fake"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        if not self.responses:
+            raise RuntimeError("QueueFakeModel ran out of responses")
+        message = self.responses.pop(0)
+        generation = ChatGeneration(message=message)
+        return ChatResult(generations=[generation], llm_output={})
+
+    async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+        raise NotImplementedError
+
+    @property
+    def _identifying_params(self) -> dict[str, Any]:
+        return {"responses_left": len(self.responses)}
+
+
+def _assistant(content: str) -> AIMessage:
+    return AIMessage(content=content)
+
+
+def _tool_call(name: str, args: dict) -> AIMessage:
+    return AIMessage(
+        content="",
+        tool_calls=[{"id": "call_1", "name": name, "args": args}],
+    )
+
+
 class TestAgentGraphHitlFlow:
     """End-to-end graph behavior with a deterministic LLM."""
 
     def test_graph_interrupts_with_proposed_diff(self):
         graph = make_graph({"title": "Wire HITL flow", "column_id": "todo"})
 
-        # Both title and column are provided, so the agent creates the proposal
-        # deterministically without calling the mocked LLM.
+        # The LLM is invoked and returns a create_task tool call.
         result = graph.invoke(
             {"messages": [{"role": "user", "content": "Add a task 'Wire HITL' to todo"}]},
             config={
@@ -55,7 +80,7 @@ class TestAgentGraphHitlFlow:
         interrupt_value = result["__interrupt__"][0].value
         diff = interrupt_value["diff"]
         assert len(diff.changes) == 1
-        assert diff.changes[0].title == "Wire HITL"
+        assert diff.changes[0].title == "Wire HITL flow"
         assert diff.changes[0].column_id == "todo"
 
     def test_approved_create_task_persists_to_db(self, session, test_user):
@@ -83,9 +108,9 @@ class TestAgentGraphHitlFlow:
 
         applied = final_state["applied_results"]
         assert len(applied) == 1
-        assert applied[0].title == "Wire HITL flow"
-        assert applied[0].column_id == "todo"
-        assert applied[0].user_id == test_user.id
+        assert applied[0]["title"] == "Wire HITL flow"
+        assert applied[0]["column_id"] == "todo"
+        assert applied[0]["user_id"] == str(test_user.id)
 
     def test_rejected_create_task_leaves_db_unchanged(self, session, test_user):
         from sqlmodel import select
@@ -147,8 +172,9 @@ class TestAgentGraphHitlFlow:
                 },
             )
 
-    def test_agent_node_prepends_system_prompt(self):
-        """The agent must prepend a system prompt before the user's messages."""
+    def test_agent_node_passes_system_prompt_and_full_history(self):
+        """The agent must invoke the LLM with a system prompt and the full
+        conversation history, not just the latest user message."""
         recorded_messages = []
 
         class RecordingFake(BaseChatModel):
@@ -174,7 +200,13 @@ class TestAgentGraphHitlFlow:
 
         graph = build_graph(model=RecordingFake(tool_args={"title": "Test", "column_id": "todo"}))
         graph.invoke(
-            {"messages": [{"role": "user", "content": "Add a task"}]},
+            {
+                "messages": [
+                    {"role": "user", "content": "Add a task"},
+                    {"role": "assistant", "content": "What title?"},
+                    {"role": "user", "content": "Test"},
+                ]
+            },
             config={
                 "configurable": {
                     "thread_id": str(uuid.uuid4()),
@@ -183,10 +215,399 @@ class TestAgentGraphHitlFlow:
             },
         )
 
-        assert len(recorded_messages) >= 2
+        assert len(recorded_messages) == 4
         assert recorded_messages[0].type == "system"
         assert "focused kanban assistant" in recorded_messages[0].content
         assert any("Add a task" in str(getattr(m, "content", "")) for m in recorded_messages)
+        assert any("What title?" in str(getattr(m, "content", "")) for m in recorded_messages)
+        assert any("Test" in str(getattr(m, "content", "")) for m in recorded_messages)
+
+    def test_second_turn_llm_receives_full_conversation_history(self):
+        """Regression: messages must accumulate across turns via the checkpointer,
+        not be replaced. Without the add_messages reducer on AgentState.messages,
+        turn 2's LLM would only see the latest user message and forget the title
+        it had already confirmed in turn 1.
+        """
+        recorded_per_call: list[list] = []
+
+        class SequencedRecordingFake(BaseChatModel):
+            responses: list[AIMessage]
+
+            @property
+            def _llm_type(self) -> str:
+                return "sequenced_recording_fake"
+
+            def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+                recorded_per_call.append(list(messages))
+                if not self.responses:
+                    raise RuntimeError("SequencedRecordingFake ran out of responses")
+                message = self.responses.pop(0)
+                generation = ChatGeneration(message=message)
+                return ChatResult(generations=[generation], llm_output={})
+
+            async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+                raise NotImplementedError
+
+            @property
+            def _identifying_params(self) -> dict[str, Any]:
+                return {}
+
+        responses = [
+            AIMessage(content='Got it, title is "create projects". Which column?'),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "call_1",
+                        "name": "create_task",
+                        "args": {"title": "create projects", "column_id": "backlog"},
+                    }
+                ],
+            ),
+        ]
+        graph = build_graph(model=SequencedRecordingFake(responses=responses))
+        thread_id = str(uuid.uuid4())
+        config = {
+            "configurable": {
+                "thread_id": thread_id,
+                "user_id": str(uuid.uuid4()),
+            }
+        }
+
+        graph.invoke(
+            {"messages": [{"role": "user", "content": "create a task named create projects"}]},
+            config=config,
+        )
+        result = graph.invoke(
+            {"messages": [{"role": "user", "content": "backlog"}]},
+            config=config,
+        )
+
+        # Turn 2 produced a tool call -> we reached the propose interrupt.
+        assert result.get("__interrupt__") is not None
+
+        assert len(recorded_per_call) == 2
+        turn2_contents = [
+            str(getattr(m, "content", "")) for m in recorded_per_call[1]
+        ]
+        # Turn 2 must see both the original user message and the assistant's
+        # turn-1 confirmation, not just the bare "backlog" reply.
+        assert any("create a task named create projects" in c for c in turn2_contents)
+        assert any("create projects" in c and "Which column" in c for c in turn2_contents)
+        assert any(c == "backlog" for c in turn2_contents)
+
+    def test_read_tool_loops_back_to_agent(self, session, test_user):
+        """A read tool (list_tasks) executes immediately and returns a ToolMessage
+        so the agent can answer with the fetched data, without requiring approval.
+        """
+        from services import create_task_service
+        from models import TaskCreate
+
+        create_task_service(session, test_user.id, TaskCreate(title="Read docs", column_id="todo"))
+
+        graph = build_graph(
+            model=QueueFakeModel(
+                responses=[
+                    _tool_call("list_tasks", {"column_id": "todo"}),
+                    _assistant("You have 1 task in todo: Read docs"),
+                ]
+            )
+        )
+        result = graph.invoke(
+            {"messages": [{"role": "user", "content": "What do I have in todo?"}]},
+            config={
+                "configurable": {
+                    "thread_id": str(uuid.uuid4()),
+                    "user_id": str(test_user.id),
+                    "session": session,
+                }
+            },
+        )
+
+        # No interrupt means no approval was requested.
+        assert "__interrupt__" not in result or result.get("__interrupt__") is None
+        last_message = result["messages"][-1]
+        assert "Read docs" in str(getattr(last_message, "content", ""))
+
+    def test_move_task_goes_through_hitl_approval(self, session, test_user):
+        """The agent can list tasks, pick one, propose a move, and apply it on approval."""
+        from langgraph.types import Command
+        from services import create_task_service
+        from models import TaskCreate
+
+        task = create_task_service(
+            session, test_user.id, TaskCreate(title="Wire HITL", column_id="todo")
+        )
+        thread_id = str(uuid.uuid4())
+        config = {
+            "configurable": {
+                "thread_id": thread_id,
+                "user_id": str(test_user.id),
+                "session": session,
+            }
+        }
+
+        graph = build_graph(
+            model=QueueFakeModel(
+                responses=[
+                    _tool_call("list_tasks", {"column_id": "todo"}),
+                    _tool_call("move_task", {"task_id": str(task.id), "column_id": "done"}),
+                ]
+            )
+        )
+
+        # First turn: list tasks, then agent decides to move one.
+        result = graph.invoke(
+            {"messages": [{"role": "user", "content": "Move the todo task to done"}]},
+            config=config,
+        )
+
+        interrupt_value = result["__interrupt__"][0].value
+        diff = interrupt_value["diff"]
+        assert len(diff.changes) == 1
+        move_change = diff.changes[0]
+        assert move_change.type == "move_task"
+        assert move_change.title == "Wire HITL"
+        assert move_change.from_column_id == "todo"
+        assert move_change.to_column_id == "done"
+
+        # Approve the move.
+        final_state = graph.invoke(Command(resume={"approved": True}), config=config)
+        moved = final_state["applied_moved_results"]
+        assert len(moved) == 1
+        assert moved[0]["id"] == str(task.id)
+        assert moved[0]["column_id"] == "done"
+
+    def test_bulk_move_tasks_by_project(self, session, test_user):
+        """The agent can list projects, filter tasks by project, and propose moving
+        all of them to a target column in a single diff."""
+        from langgraph.types import Command
+        from services import create_task_service
+        from models import Project, TaskCreate
+
+        project = Project(name="Alpha", description="", user_id=test_user.id)
+        session.add(project)
+        session.commit()
+        session.refresh(project)
+        task_a = create_task_service(
+            session,
+            test_user.id,
+            TaskCreate(title="Alpha one", column_id="todo", project_id=project.id),
+        )
+        task_b = create_task_service(
+            session,
+            test_user.id,
+            TaskCreate(title="Alpha two", column_id="in_progress", project_id=project.id),
+        )
+        create_task_service(
+            session,
+            test_user.id,
+            TaskCreate(title="Other", column_id="todo"),
+        )
+
+        thread_id = str(uuid.uuid4())
+        config = {
+            "configurable": {
+                "thread_id": thread_id,
+                "user_id": str(test_user.id),
+                "session": session,
+            }
+        }
+
+        graph = build_graph(
+            model=QueueFakeModel(
+                responses=[
+                    _tool_call("list_projects", {}),
+                    _tool_call(
+                        "list_tasks", {"project_id": str(project.id)}
+                    ),
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "call_3",
+                                "name": "move_task",
+                                "args": {
+                                    "task_id": str(task_a.id),
+                                    "column_id": "done",
+                                },
+                            },
+                            {
+                                "id": "call_4",
+                                "name": "move_task",
+                                "args": {
+                                    "task_id": str(task_b.id),
+                                    "column_id": "done",
+                                },
+                            },
+                        ],
+                    ),
+                ]
+            )
+        )
+
+        result = graph.invoke(
+            {"messages": [{"role": "user", "content": "Move all Alpha tasks to done"}]},
+            config=config,
+        )
+
+        interrupt_value = result["__interrupt__"][0].value
+        diff = interrupt_value["diff"]
+        assert len(diff.changes) == 2
+        titles = {change.title for change in diff.changes}
+        assert titles == {"Alpha one", "Alpha two"}
+        assert all(change.project_name == "Alpha" for change in diff.changes)
+
+        final_state = graph.invoke(Command(resume={"approved": True}), config=config)
+        moved = final_state["applied_moved_results"]
+        assert len(moved) == 2
+        assert all(task["column_id"] == "done" for task in moved)
+
+    def test_list_tasks_by_project_name_filters_and_includes_name(self, session, test_user):
+        """The agent can list tasks by project name; read results include the
+        project name so the LLM can mention it."""
+        from models import Project, TaskCreate
+        from services import create_task_service
+
+        project = Project(name="Alpha", description="", user_id=test_user.id)
+        session.add(project)
+        session.commit()
+        session.refresh(project)
+        create_task_service(
+            session,
+            test_user.id,
+            TaskCreate(title="Alpha task", column_id="todo", project_id=project.id),
+        )
+        create_task_service(
+            session, test_user.id, TaskCreate(title="Other task", column_id="todo")
+        )
+
+        graph = build_graph(
+            model=QueueFakeModel(
+                responses=[
+                    _tool_call("list_tasks", {"project_name": "Alpha"}),
+                    _assistant("Found 1 Alpha task: Alpha task"),
+                ]
+            )
+        )
+        result = graph.invoke(
+            {"messages": [{"role": "user", "content": "What tasks are in project Alpha?"}]},
+            config={
+                "configurable": {
+                    "thread_id": str(uuid.uuid4()),
+                    "user_id": str(test_user.id),
+                    "session": session,
+                }
+            },
+        )
+
+        assert "__interrupt__" not in result or result.get("__interrupt__") is None
+        last_message = result["messages"][-1]
+        content = str(getattr(last_message, "content", ""))
+        assert "Alpha task" in content
+
+
+class TestUpdateTaskHitlFlow:
+    """update_task goes through the same propose → approve → apply flow."""
+
+    def test_update_task_goes_through_hitl_approval(self, session, test_user):
+        """The agent can get a task, propose an update, and apply it on approval."""
+        from langgraph.types import Command
+        from services import create_task_service
+        from models import TaskCreate
+
+        task = create_task_service(
+            session, test_user.id, TaskCreate(title="Wire HITL", column_id="todo")
+        )
+        thread_id = str(uuid.uuid4())
+        config = {
+            "configurable": {
+                "thread_id": thread_id,
+                "user_id": str(test_user.id),
+                "session": session,
+            }
+        }
+
+        graph = build_graph(
+            model=QueueFakeModel(
+                responses=[
+                    _tool_call("get_task", {"task_id": str(task.id)}),
+                    _tool_call(
+                        "update_task",
+                        {"task_id": str(task.id), "description": "Updated via agent"},
+                    ),
+                ]
+            )
+        )
+
+        result = graph.invoke(
+            {"messages": [{"role": "user", "content": "Add a description to Wire HITL"}]},
+            config=config,
+        )
+
+        interrupt_value = result["__interrupt__"][0].value
+        diff = interrupt_value["diff"]
+        assert len(diff.changes) == 1
+        update_change = diff.changes[0]
+        assert update_change.type == "update_task"
+        assert update_change.title == "Wire HITL"
+        assert update_change.description == "Updated via agent"
+
+        final_state = graph.invoke(Command(resume={"approved": True}), config=config)
+        updated = final_state["applied_updated_results"]
+        assert len(updated) == 1
+        assert updated[0]["id"] == str(task.id)
+        assert updated[0]["description"] == "Updated via agent"
+
+    def test_update_task_preserves_omitted_fields(self, session, test_user):
+        """Omitted fields are filled from the current task before proposing."""
+        from services import create_task_service
+        from models import TaskCreate, ChecklistItem
+        from datetime import date
+
+        task = create_task_service(
+            session,
+            test_user.id,
+            TaskCreate(
+                title="Wire HITL",
+                column_id="todo",
+                description="Original",
+                checklist=[ChecklistItem(text="step 1", checked=True)],
+            ),
+        )
+        task.due_date = date(2026, 8, 15)
+        session.add(task)
+        session.commit()
+        session.refresh(task)
+
+        graph = build_graph(
+            model=QueueFakeModel(
+                responses=[
+                    _tool_call(
+                        "update_task",
+                        {"task_id": str(task.id), "title": "Wire HITL v2"},
+                    ),
+                ]
+            )
+        )
+        result = graph.invoke(
+            {"messages": [{"role": "user", "content": "Rename the task"}]},
+            config={
+                "configurable": {
+                    "thread_id": str(uuid.uuid4()),
+                    "user_id": str(test_user.id),
+                    "session": session,
+                }
+            },
+        )
+
+        interrupt_value = result["__interrupt__"][0].value
+        diff = interrupt_value["diff"]
+        update_change = diff.changes[0]
+        assert update_change.title == "Wire HITL v2"
+        assert update_change.description == "Original"
+        assert update_change.checklist == [ChecklistItem(text="step 1", checked=True)]
+        assert update_change.due_date == date(2026, 8, 15)
 
 
 class TestDefaultModel:
@@ -245,7 +666,7 @@ class TestDefaultModel:
         assert captured["kwargs"]["model"] == "deepseek/deepseek-chat"
         assert captured["kwargs"]["base_url"] == "https://openrouter.ai/api/v1"
 
-    def test_default_model_binds_create_task_tool(self):
+    def test_default_model_binds_all_agent_tools(self):
         captured = {}
 
         def mock_chat(**kwargs):
@@ -259,64 +680,5 @@ class TestDefaultModel:
             with patch("agent.graph.ChatOpenAI", mock_chat):
                 _default_model()
 
-        assert len(captured["tools"]) == 1
-        assert captured["tools"][0].name == "create_task"
-
-
-class TestDraftExtraction:
-    """Unit tests for the rule-based task-draft accumulation."""
-
-    def test_extract_quoted_title(self):
-        assert _extract_quoted_title('Create "Work on car"') == "Work on car"
-        assert _extract_quoted_title("Create 'Work on car'") == "Work on car"
-        assert _extract_quoted_title("Create Work on car") is None
-
-    def test_detect_column(self):
-        assert _detect_column("put it in todo") == "todo"
-        assert _detect_column("backlog") == "backlog"
-        assert _detect_column("in_progress") == "in_progress"
-        assert _detect_column("no column here") is None
-
-    def test_update_draft_accumulates_title_then_column(self):
-        draft = _update_draft(None, [{"role": "user", "content": "Create 'Work on car'"}])
-        assert draft["title"] == "Work on car"
-        assert draft.get("column_id") is None
-
-        draft = _update_draft(draft, [{"role": "user", "content": "todo"}])
-        assert draft["title"] == "Work on car"
-        assert draft["column_id"] == "todo"
-
-    def test_update_draft_does_not_overwrite_title_with_column_reply(self):
-        draft = {"title": "Work on car", "column_id": None}
-        draft = _update_draft(draft, [{"role": "user", "content": "in_progress"}])
-        assert draft["title"] == "Work on car"
-        assert draft["column_id"] == "in_progress"
-
-    def test_parse_message_extracts_quoted_title_and_column(self):
-        assert _parse_message("Create 'Read docs' in todo") == {
-            "title": "Read docs",
-            "column_id": "todo",
-        }
-
-    def test_parse_message_title_only_asks_for_column_later(self):
-        assert _parse_message('can you create "Work on car"?') == {
-            "title": "Work on car"
-        }
-
-    def test_parse_message_column_only(self):
-        assert _parse_message("backlog") == {"column_id": "backlog"}
-        assert _parse_message("in_progress") == {"column_id": "in_progress"}
-
-    def test_clean_title_strips_task_filler(self):
-        assert _clean_title("Add a task to wire HITL", None) == "wire HITL"
-        assert _clean_title("Create a task Read docs in todo", "todo") == "Read docs"
-        assert _clean_title("Add a task", None) == ""
-
-    def test_looks_like_task_request(self):
-        assert _looks_like_task_request("Create a task")
-        assert _looks_like_task_request("Add 'Buy milk'")
-        assert _looks_like_task_request("make new task")
-        assert _looks_like_task_request("todo")
-        assert _looks_like_task_request("in_progress")
-        assert not _looks_like_task_request("Who is the president?")
-        assert not _looks_like_task_request("Move task 123 to done")
+        names = {t.name for t in captured["tools"]}
+        assert names == {"create_task", "move_task", "update_task", "list_tasks", "list_projects", "get_task"}

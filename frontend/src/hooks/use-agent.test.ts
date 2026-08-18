@@ -157,7 +157,7 @@ describe("useAgent", () => {
     ]);
     expect(result.current.pendingDiff).toBeNull();
     expect(result.current.messages).toContainEqual(
-      expect.objectContaining({ role: "assistant", content: "Created task(s): Wire HITL flow" }),
+      expect.objectContaining({ role: "assistant", content: "Created: Wire HITL flow" }),
     );
   });
 
@@ -204,7 +204,106 @@ describe("useAgent", () => {
     expect(onApply).toHaveBeenCalledWith([]);
     expect(result.current.pendingDiff).toBeNull();
     expect(result.current.messages).toContainEqual(
-      expect.objectContaining({ role: "assistant", content: "Task creation cancelled." }),
+      expect.objectContaining({ role: "assistant", content: "Changes cancelled." }),
+    );
+  });
+
+  it("approves a diff with multiple moved tasks and surfaces their titles", async () => {
+    vi.mocked(global.fetch)
+      .mockResolvedValueOnce(
+        new Response(
+          makeStream([
+            'event: interrupt\ndata: {"changes":[{"type":"move_task","title":"Wire HITL flow","from_column_id":"todo","to_column_id":"done"},{"type":"move_task","title":"Read docs","from_column_id":"todo","to_column_id":"done"}]}\n\n',
+            "event: done\ndata: {}\n\n",
+          ]),
+          { headers: { "content-type": "text/event-stream" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          makeStream([
+            'event: apply\ndata: {"created_tasks":[],"moved_tasks":[{"id":"t1","title":"Wire HITL flow","column_id":"done"},{"id":"t2","title":"Read docs","column_id":"done"}]}\n\n',
+            "event: done\ndata: {}\n\n",
+          ]),
+          { headers: { "content-type": "text/event-stream" } },
+        ),
+      );
+
+    const onApply = vi.fn();
+    const { result } = renderHook(() => useAgent({ onApply }));
+
+    await act(async () => {
+      await result.current.send("Move everything to done");
+    });
+
+    await waitFor(() => expect(result.current.status).toBe("waiting"));
+
+    await act(async () => {
+      await result.current.approve();
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toBe("idle");
+    });
+
+    expect(onApply).toHaveBeenCalledWith([
+      expect.objectContaining({ id: "t1", title: "Wire HITL flow" }),
+      expect.objectContaining({ id: "t2", title: "Read docs" }),
+    ]);
+    expect(result.current.messages).toContainEqual(
+      expect.objectContaining({
+        role: "assistant",
+        content: "Moved: Wire HITL flow, Read docs",
+      }),
+    );
+  });
+
+  it("approves an update diff and surfaces updated task titles", async () => {
+    vi.mocked(global.fetch)
+      .mockResolvedValueOnce(
+        new Response(
+          makeStream([
+            'event: interrupt\ndata: {"changes":[{"type":"update_task","title":"Wire HITL flow","task_id":"t1"}]}\n\n',
+            "event: done\ndata: {}\n\n",
+          ]),
+          { headers: { "content-type": "text/event-stream" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          makeStream([
+            'event: apply\ndata: {"created_tasks":[],"moved_tasks":[],"updated_tasks":[{"id":"t1","title":"Wire HITL flow","column_id":"todo"}]}\n\n',
+            "event: done\ndata: {}\n\n",
+          ]),
+          { headers: { "content-type": "text/event-stream" } },
+        ),
+      );
+
+    const onApply = vi.fn();
+    const { result } = renderHook(() => useAgent({ onApply }));
+
+    await act(async () => {
+      await result.current.send("Update the description");
+    });
+
+    await waitFor(() => expect(result.current.status).toBe("waiting"));
+
+    await act(async () => {
+      await result.current.approve();
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toBe("idle");
+    });
+
+    expect(onApply).toHaveBeenCalledWith([
+      expect.objectContaining({ id: "t1", title: "Wire HITL flow" }),
+    ]);
+    expect(result.current.messages).toContainEqual(
+      expect.objectContaining({
+        role: "assistant",
+        content: "Updated: Wire HITL flow",
+      }),
     );
   });
 

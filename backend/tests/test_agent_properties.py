@@ -5,14 +5,18 @@ invariants hold across the input space.
 """
 
 import uuid
+from typing import Any
 
 import pytest
 from hypothesis import HealthCheck, given, settings, strategies as st
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import AIMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
 from langgraph.types import Command
 
 from agent.graph import build_graph
-from agent.state import CreateTaskChange
-from agent.tools import create_task
+from agent.state import CreateTaskChange, UpdateTaskChange
+from agent.tools import create_task, update_task
 from models import ChecklistItem
 from tests.agent_fakes import FakeToolCallingModel
 
@@ -98,9 +102,109 @@ class TestApprovedChangeProperties:
         final_state = graph.invoke(Command(resume={"approved": True}), config=config)
         applied = final_state["applied_results"]
         assert len(applied) == 1
-        assert applied[0].title == title.strip()
-        assert applied[0].column_id == column_id
-        assert applied[0].user_id == test_user.id
+        assert applied[0]["title"] == title.strip()
+        assert applied[0]["column_id"] == column_id
+        assert applied[0]["user_id"] == str(test_user.id)
+
+
+class TestUpdateTaskToolProperties:
+    """Invariants of the update_task tool function."""
+
+    @given(title=text_strategy)
+    @settings(
+        max_examples=30,
+        suppress_health_check=[HealthCheck.differing_executors],
+    )
+    def test_valid_title_returns_matching_change(self, title):
+        task_id = str(uuid.uuid4())
+        result = update_task(task_id=task_id, title=title)
+        assert result["type"] == "update_task"
+        assert result["task_id"] == uuid.UUID(task_id)
+        assert result["title"] == title.strip()
+
+    @given(title=st.text(min_size=0, max_size=20))
+    @settings(
+        max_examples=20,
+        suppress_health_check=[HealthCheck.differing_executors],
+    )
+    def test_blank_or_empty_title_is_rejected(self, title):
+        if not title.strip():
+            with pytest.raises(ValueError):
+                update_task(task_id=str(uuid.uuid4()), title=title)
+
+    def test_malformed_task_id_is_rejected(self):
+        with pytest.raises(ValueError):
+            update_task(task_id="not-a-uuid", description="Updated description")
+
+
+class FakeUpdateToolModel(BaseChatModel):
+    """A deterministic LLM that calls update_task with the supplied args."""
+
+    tool_args: dict[str, Any]
+
+    @property
+    def _llm_type(self) -> str:
+        return "fake_update_tool_model"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        tool_call = {
+            "id": "call_1",
+            "name": "update_task",
+            "args": self.tool_args,
+        }
+        message = AIMessage(content="", tool_calls=[tool_call])
+        generation = ChatGeneration(message=message)
+        return ChatResult(generations=[generation], llm_output={})
+
+    async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+        raise NotImplementedError
+
+    @property
+    def _identifying_params(self) -> dict[str, Any]:
+        return {"tool_args": self.tool_args}
+
+
+class TestApprovedUpdateChangeProperties:
+    """Invariants of the apply node when updating tasks."""
+
+    @given(title=text_strategy)
+    @settings(
+        max_examples=30,
+        suppress_health_check=[
+            HealthCheck.function_scoped_fixture,
+            HealthCheck.differing_executors,
+        ],
+    )
+    def test_approved_update_changes_title(self, session, test_user, title):
+        from services import create_task_service
+        from models import TaskCreate
+
+        task = create_task_service(
+            session, test_user.id, TaskCreate(title="Original", column_id="todo")
+        )
+        model = FakeUpdateToolModel(
+            tool_args={"task_id": str(task.id), "title": title}
+        )
+        graph = build_graph(model=model)
+        thread_id = str(uuid.uuid4())
+        config = {
+            "configurable": {
+                "thread_id": thread_id,
+                "user_id": str(test_user.id),
+                "session": session,
+            }
+        }
+
+        graph.invoke(
+            {"messages": [{"role": "user", "content": "rename task"}]},
+            config=config,
+        )
+
+        final_state = graph.invoke(Command(resume={"approved": True}), config=config)
+        updated = final_state["applied_updated_results"]
+        assert len(updated) == 1
+        assert updated[0]["title"] == title.strip()
+        assert updated[0]["id"] == str(task.id)
 
 
 class TestRejectedChangeProperties:

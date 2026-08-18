@@ -5,8 +5,8 @@ from typing import Literal
 
 from blocked_usernames import PROFANE_USERNAMES
 from pydantic import EmailStr, field_serializer, model_validator
-from sqlalchemy import JSON, Column
-from sqlmodel import Field, SQLModel
+from sqlalchemy import JSON, Column, UniqueConstraint
+from sqlmodel import Field, Relationship, SQLModel
 
 ColumnId = Literal["backlog", "todo", "in_progress", "done"]
 
@@ -62,11 +62,16 @@ def _validate_password(value: str) -> str:
 
 class User(SQLModel, table=True):
     __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("oauth_provider", "oauth_provider_id"),
+    )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     email: EmailStr = Field(unique=True, index=True)
     username: str = Field(unique=True, index=True)
-    hashed_password: str
+    hashed_password: str | None = None
+    oauth_provider: str | None = None
+    oauth_provider_id: str | None = None
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
@@ -121,6 +126,10 @@ class Project(SQLModel, table=True):
     daily_enabled: bool = Field(default=False)
     daily_template: DailyTemplate | None = Field(default=None, sa_column=Column(JSON))
     daily_last_generated: str | None = Field(default=None)
+    tasks: list["Task"] = Relationship(
+        back_populates="project",
+        sa_relationship_kwargs={"foreign_keys": "[Task.project_id]"},
+    )
 
     @field_serializer("daily_template")
     def serialize_daily_template(
@@ -188,6 +197,10 @@ class Task(SQLModel, table=True):
     # it never deletes or blocks deletion of the task.
     project_id: uuid.UUID | None = Field(
         default=None, foreign_key="projects.id", ondelete="SET NULL", index=True
+    )
+    project: Project | None = Relationship(
+        back_populates="tasks",
+        sa_relationship_kwargs={"foreign_keys": "[Task.project_id]"},
     )
     # Display order within a column; the frontend renders tasks sorted by it.
     position: int
