@@ -85,7 +85,7 @@ jobs:
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
-            --parameters '{"commands":["cd ~/jidoka && docker compose -f compose.prod.yaml pull && docker compose -f compose.prod.yaml up -d && docker system prune -f"]}' \
+            --parameters '{"commands":["cd ~/jidoka && docker-compose -f compose.prod.yaml pull && docker-compose -f compose.prod.yaml up -d && docker system prune -f"]}' \
             --comment "Deploy Jidoka" \
             --query "Command.CommandId" \
             --output text)
