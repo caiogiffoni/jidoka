@@ -105,6 +105,19 @@ cd frontend && pnpm install && pnpm dev   # Next.js on :3000
 
 The backend can also run outside Docker with `cd backend && uv run fastapi dev main.py` (expects Postgres on `localhost:5432`; override with `DATABASE_URL`).
 
+## Deploying to production
+
+A full step-by-step checklist lives in [`deploy-ec2.md`](deploy-ec2.md). The production setup for this project is:
+
+- Frontend on **Vercel** at `https://<your-frontend-domain>`.
+- Backend and Postgres on a single **AWS EC2 `t4g.micro`** in `us-east-1`, managed with Docker Compose.
+- Backend domain: `https://api.<your-domain>`.
+- **nginx + Certbot** handle HTTPS and certificate renewal.
+- GitHub Actions builds and pushes the backend image to **GHCR**, then deploys via **AWS Systems Manager Run Command** — no inbound SSH port required.
+- Daily backups at 1 PM BRT: `pg_dump` locally + copy to S3, retaining the last 3 days.
+- Optional: auto stop/start the EC2 instance at midnight/8 AM BRT to save ~1/3 of compute cost.
+
+
 ## Testing
 
 ```bash

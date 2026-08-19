@@ -20,8 +20,12 @@ The project language (comments, docs, commit messages) is **English**.
 - **Repo type:** Monorepo with two main packages:
   - `backend/` — FastAPI + SQLModel + Postgres/pgvector (Python 3.14)
   - `frontend/` — Next.js 16 App Router + TypeScript + Tailwind v4 + shadcn/ui
-- **Infra:** Docker Compose for Postgres + backend; frontend runs locally with
-  pnpm (not containerized).
+- **Infra (local):** Docker Compose (`compose.yaml`) for Postgres + backend;
+  frontend runs locally with pnpm (not containerized).
+- **Infra (production):** Frontend on Vercel; backend + Postgres on a single
+  AWS EC2 `t4g.micro` in `us-east-1`, orchestrated with Docker Compose
+  (`compose.prod.yaml`) behind nginx + Certbot. Deploy pipeline is GitHub
+  Actions → GHCR → AWS Systems Manager Run Command.
 
 Source material in `temp/`:
 - `PROJETO 18.pdf` — original 2023 spec (outdated stack; do not follow for
@@ -46,8 +50,11 @@ Source material in `temp/`:
 | Package manager (frontend) | pnpm (`package.json`, `pnpm-lock.yaml`) |
 | Testing backend | pytest + FastAPI `TestClient` against real Postgres |
 | Testing frontend | Vitest + React Testing Library + jsdom |
-| CI/CD | GitHub Actions (`.github/workflows/backend-tests.yml`, `frontend-tests.yml`) |
-| Container runtime | Docker Compose (`compose.yaml`) |
+| CI/CD | GitHub Actions (`.github/workflows/backend-tests.yml`, `frontend-tests.yml`, `deploy.yml`) |
+| Container runtime (local) | Docker Compose (`compose.yaml`) |
+| Container runtime (prod) | Docker Compose (`compose.prod.yaml`) on AWS EC2 |
+| Reverse proxy / TLS (prod) | nginx + Certbot |
+| Production deploy | GitHub Actions → GHCR → AWS Systems Manager Run Command |
 
 Planned but not yet implemented: LangGraph agent graph, Langfuse tracing,
 Vercel AI SDK streaming, JWT auth in FastAPI, MCP server.
@@ -89,7 +96,10 @@ Vercel AI SDK streaming, JWT auth in FastAPI, MCP server.
 │   ├── eslint.config.mjs
 │   ├── vitest.config.ts
 │   └── vitest.setup.ts
-├── compose.yaml             # Docker Compose: pgvector + backend
+├── compose.yaml             # Docker Compose: pgvector + backend (local dev)
+├── compose.prod.yaml        # Production Docker Compose: nginx + Certbot + backend + pgvector
+├── nginx.conf               # Production nginx reverse-proxy config
+├── deploy-ec2.md            # Step-by-step production deployment checklist
 ├── README.md                # User-facing overview + data model
 ├── CLAUDE.md                # Claude Code specific guidance (read it)
 ├── DESIGN.md                # Visual design system ("The Andon Line")
