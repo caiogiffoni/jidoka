@@ -73,23 +73,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Copy compose files to EC2
-        uses: appleboy/scp-action@v0.1.7
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          source: "compose.prod.yaml,nginx.conf"
-          target: "~/jidoka"
-      - name: Pull and restart on EC2
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            cd ~/jidoka
-            docker compose -f compose.prod.yaml pull
-            docker compose -f compose.prod.yaml up -d
-            docker compose -f compose.prod.yaml ps
-            docker system prune -f
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Deploy via SSM Run Command
+        run: |
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --parameters '{"commands":["cd ~/jidoka && docker compose -f compose.prod.yaml pull && docker compose -f compose.prod.yaml up -d && docker system prune -f"]}' \
+            --comment "Deploy Jidoka" \
+            --query "Command.CommandId" \
+            --output text)
+          echo "Command ID: $COMMAND_ID"
+          aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}"
