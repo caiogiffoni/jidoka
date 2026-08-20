@@ -5,7 +5,8 @@ import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   closestCorners,
   useSensor,
   useSensors,
@@ -79,7 +80,13 @@ export function Board({
   }, [tasks, filters.projectId, normalizedSearch]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    // Mouse for desktop: start dragging as soon as the pointer moves a few px.
+    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
+    // Touch for mobile: long-press (250 ms) before lifting so scrolling and
+    // tapping the card to open it aren't interpreted as a drag start.
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 250, tolerance: 5 },
+    }),
     // Space (not Enter) lifts and drops, so Enter can open the task dialog.
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
