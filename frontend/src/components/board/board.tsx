@@ -201,7 +201,7 @@ export function Board({
       }}
     >
       <BoardFilters projects={projects} filters={filters} onChange={setFilters} />
-      <div className="flex flex-1 items-start gap-4 overflow-x-auto p-4 sm:p-6">
+      <div className="flex flex-1 items-start gap-4 overflow-x-auto scroll-smooth p-4 pb-6 snap-x snap-mandatory scroll-pl-4 sm:p-6 sm:scroll-pl-6">
         {COLUMNS.map((column) => (
           <Column
             key={column.id}

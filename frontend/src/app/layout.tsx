@@ -32,12 +32,24 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var theme = localStorage.getItem('theme') || 'system';
+                  var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                  var resolved = theme === 'system' ? (dark ? 'dark' : 'light') : theme;
+                  var html = document.documentElement;
+                  html.classList.remove('light', 'dark');
+                  html.classList.add(resolved);
+                  html.style.colorScheme = resolved;
+                } catch (e) {}
+              })();
+            `,
+          }}
+        />
+        <ThemeProvider defaultTheme="system">
           {children}
           <Toaster />
           <DailyTaskGenerator />

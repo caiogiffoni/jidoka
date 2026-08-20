@@ -157,7 +157,7 @@ export function AddTaskDialog({ projects }: { projects: Project[] }) {
             <div
               role="group"
               aria-labelledby="new-task-column-label"
-              className="flex gap-1.5"
+              className="flex flex-wrap gap-1.5"
             >
               {COLUMNS.map((column) => (
                 <Button
@@ -167,7 +167,7 @@ export function AddTaskDialog({ projects }: { projects: Project[] }) {
                   size="sm"
                   aria-pressed={columnId === column.id}
                   className={cn(
-                    "flex-1",
+                    "flex-1 basis-[calc(50%-0.375rem)] sm:basis-auto",
                     columnId === column.id && "ring-1 ring-ring/40",
                   )}
                   onClick={() => setColumnId(column.id)}
