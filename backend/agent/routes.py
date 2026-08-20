@@ -20,6 +20,7 @@ from agent.graph import graph
 from agent.state import ProposedDiff
 from db import get_session
 from models import User
+from rate_limit import limiter
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -95,24 +96,26 @@ def _translate_chunk(chunk: dict) -> list[tuple[str, Any]]:
 
 
 @router.post("/stream")
+@limiter.limit("5/minute")
 def stream_agent(
-    request: AgentStreamRequest,
+    request: Request,
+    payload: AgentStreamRequest,
     current_user: User = Depends(auth.get_current_user),
     session: Session = Depends(get_session),
 ):
     """Stream agent events for a single turn (new message or resume)."""
     config = {
         "configurable": {
-            "thread_id": request.thread_id,
+            "thread_id": payload.thread_id,
             "user_id": str(current_user.id),
             "session": session,
         }
     }
 
-    if request.resume is not None:
-        input_payload = Command(resume=request.resume)
-    elif request.message is not None:
-        input_payload = {"messages": [HumanMessage(content=request.message)]}
+    if payload.resume is not None:
+        input_payload = Command(resume=payload.resume)
+    elif payload.message is not None:
+        input_payload = {"messages": [HumanMessage(content=payload.message)]}
     else:
         raise HTTPException(status_code=422, detail="provide message or resume")
 

@@ -2,10 +2,14 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 import auth
 from agent.routes import router as agent_router
 from db import create_db_and_tables
+from rate_limit import limiter
 from routers import health, projects, tasks, work_blocks
 
 
@@ -18,6 +22,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
 app.include_router(auth.router)
 app.include_router(health.router)
 app.include_router(tasks.router)

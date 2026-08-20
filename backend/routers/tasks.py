@@ -2,12 +2,13 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlmodel import Session, select
 
 import auth
 from db import get_session
 from models import Task, TaskArchive, TaskCreate, TaskMove, TaskUpdate, User, WorkBlock, WorkBlockCreate
+from rate_limit import limiter
 from services import (
     column_tasks,
     create_task_service,
@@ -38,7 +39,9 @@ def list_tasks(
 
 
 @router.post("", response_model=Task, status_code=201)
+@limiter.limit("1000/minute")
 def create_task(
+    request: Request,
     payload: TaskCreate,
     current_user: User = Depends(auth.get_current_user),
     session: Session = Depends(get_session),
@@ -123,7 +126,9 @@ def delete_task(
 
 
 @router.post("/{task_id}/work-blocks", response_model=WorkBlock, status_code=201)
+@limiter.limit("1000/minute")
 def create_work_block(
+    request: Request,
     task_id: uuid.UUID,
     payload: WorkBlockCreate,
     current_user: User = Depends(auth.get_current_user),
