@@ -34,13 +34,13 @@ export function ChatPanel({ open, onOpenChange, onApply }: ChatPanelProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="flex h-[calc(100dvh-2rem)] max-h-none flex-col sm:h-auto sm:max-h-[80vh] sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Agent</DialogTitle>
         </DialogHeader>
 
-        <div className="flex max-h-[80vh] flex-col gap-4">
-          <div className="flex flex-col gap-2 overflow-y-auto">
+        <div className="flex flex-1 flex-col gap-4 overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
             {messages.map((msg, index) => (
               <div
                 key={index}
@@ -111,7 +111,7 @@ export function ChatPanel({ open, onOpenChange, onApply }: ChatPanelProps) {
 
           {error && <p className="text-sm text-destructive">{error}</p>}
 
-          <form onSubmit={handleSubmit} className="flex gap-2">
+          <form onSubmit={handleSubmit} className="flex shrink-0 gap-2">
             <Input
               placeholder="Ask the agent..."
               value={input}
