@@ -11,6 +11,7 @@ import {
 import { NativeSelect } from "@/components/ui/native-select";
 import { useBoardStore } from "@/stores/board-store";
 import {
+  DEFAULT_SETTINGS,
   PHASE_LABELS,
   phaseDurationMs,
   usePomodoroStore,
@@ -115,6 +116,22 @@ export function PomodoroMenu() {
         ? remainingMs
         : duration;
   const progress = status === "idle" ? 0 : 1 - remaining / duration;
+  const timeString = formatMs(remaining);
+
+  // Keep the remaining time visible in the browser tab while a timer is
+  // active, e.g. "Jidoka (10:05)". Reset to the plain title when idle or
+  // when the user disables the option in settings.
+  const showTimerInTabTitle =
+    settings.showTimerInTabTitle ?? DEFAULT_SETTINGS.showTimerInTabTitle;
+  useEffect(() => {
+    document.title =
+      status === "idle" || !showTimerInTabTitle
+        ? "Jidoka"
+        : `Jidoka (${timeString})`;
+    return () => {
+      document.title = "Jidoka";
+    };
+  }, [status, timeString, showTimerInTabTitle]);
 
   return (
     <Popover
@@ -130,7 +147,7 @@ export function PomodoroMenu() {
           aria-label={
             status === "idle"
               ? "Pomodoro timer"
-              : `Pomodoro timer: ${PHASE_LABELS[phase]}, ${formatMs(remaining)} left`
+              : `Pomodoro timer: ${PHASE_LABELS[phase]}, ${timeString} left`
           }
         >
           <TomatoIcon
@@ -146,7 +163,7 @@ export function PomodoroMenu() {
                 status === "paused" && "text-muted-foreground",
               )}
             >
-              {formatMs(remaining)}
+              {timeString}
             </span>
           )}
         </Button>
@@ -169,7 +186,7 @@ export function PomodoroMenu() {
         </div>
 
         <div className="text-center font-mono text-4xl font-medium tracking-tight tabular-nums">
-          {formatMs(remaining)}
+          {timeString}
         </div>
 
         <div className="h-1 overflow-hidden rounded-full bg-muted">

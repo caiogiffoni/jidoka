@@ -17,6 +17,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Slider } from "@/components/ui/slider";
 import { ALARM_SOUNDS, type AlarmSound } from "@/lib/alarm";
 import {
+  DEFAULT_SETTINGS,
   usePomodoroStore,
   type PomodoroSettings,
 } from "@/stores/pomodoro-store";
@@ -56,6 +57,7 @@ interface FormState {
   stopAlarmMin: string;
   autoStartBreak: boolean;
   dailyGoal: string;
+  showTimerInTabTitle: boolean;
 }
 
 function clamp(raw: string, min: number, max: number, fallback: number) {
@@ -77,6 +79,9 @@ function SettingsForm({ close }: { close: () => void }) {
     stopAlarmMin: String(settings.stopAlarmMin),
     autoStartBreak: settings.autoStartBreak,
     dailyGoal: String(settings.dailyGoal),
+    showTimerInTabTitle:
+      settings.showTimerInTabTitle ??
+      DEFAULT_SETTINGS.showTimerInTabTitle,
   });
 
   function patch<K extends keyof FormState>(key: K, value: FormState[K]) {
@@ -95,6 +100,7 @@ function SettingsForm({ close }: { close: () => void }) {
       stopAlarmMin: clamp(form.stopAlarmMin, 1, 30, settings.stopAlarmMin),
       autoStartBreak: form.autoStartBreak,
       dailyGoal: clamp(form.dailyGoal, 0, 24, settings.dailyGoal),
+      showTimerInTabTitle: form.showTimerInTabTitle,
     };
     updateSettings(next);
     close();
@@ -203,6 +209,20 @@ function SettingsForm({ close }: { close: () => void }) {
             id="pomo-auto-break"
             checked={form.autoStartBreak}
             onCheckedChange={(v) => patch("autoStartBreak", v === true)}
+          />
+        </div>
+
+        <label
+          htmlFor="pomo-tab-title"
+          className="text-sm text-muted-foreground"
+        >
+          Show timer in tab title
+        </label>
+        <div className="flex justify-end pr-1">
+          <Checkbox
+            id="pomo-tab-title"
+            checked={form.showTimerInTabTitle}
+            onCheckedChange={(v) => patch("showTimerInTabTitle", v === true)}
           />
         </div>
 

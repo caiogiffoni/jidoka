@@ -3,10 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CalendarClock, SquareCheck, X } from "lucide-react";
+import { CalendarClock, MoreVertical, SquareCheck } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { formatDueDate, isOverdue } from "@/lib/due-date";
+import { archiveTaskWithUndo } from "./archive-task";
 import { ConfirmDeleteDialog } from "./delete-task";
 import { TaskDialog } from "./task-dialog";
 import type { ColumnId, Project, Task } from "@/lib/types";
@@ -15,12 +22,14 @@ export function TaskCard({
   task,
   columnId,
   overlay,
+  onArchive,
   onDelete,
   disabled = false,
 }: {
   task: Task;
   columnId?: ColumnId;
   overlay?: boolean;
+  onArchive?: () => void;
   onDelete?: () => void;
   disabled?: boolean;
 }) {
@@ -36,7 +45,7 @@ export function TaskCard({
         <p
           className={cn(
             "text-sm leading-snug font-medium",
-            onDelete && "pr-5",
+            (onArchive || onDelete) && "pr-5",
           )}
         >
           {task.title}
@@ -70,34 +79,48 @@ export function TaskCard({
           </div>
         )}
       </CardContent>
-      {onDelete && (
-        <button
-          type="button"
-          className={cn(
-            "absolute top-1.5 right-1.5 flex size-6 items-center justify-center rounded-md text-muted-foreground",
-            // Hidden until the card is hovered or the button is focused;
-            // coarse pointers can't hover, so keep it available there.
-            "pointer-events-none opacity-0 transition-opacity duration-150",
-            "group-hover:pointer-events-auto group-hover:opacity-100",
-            "focus-visible:pointer-events-auto focus-visible:opacity-100",
-            "pointer-coarse:pointer-events-auto pointer-coarse:opacity-100",
-            "hover:bg-destructive/10 hover:text-destructive active:translate-y-px",
-            "outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-          )}
-          // The card is a dnd-kit draggable and opens the dialog on click:
-          // keep pointer, click, and key events on this button from reaching it.
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") e.stopPropagation();
-          }}
-        >
-          <X className="size-3.5" />
-          <span className="sr-only">Delete task</span>
-        </button>
+      {(onArchive || onDelete) && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                "absolute top-1.5 right-1.5 flex size-6 items-center justify-center rounded-md text-muted-foreground",
+                // Hidden until the card is hovered or the button is focused;
+                // coarse pointers can't hover, so keep it available there.
+                // When the menu is open the trigger stays visible even if the
+                // pointer has moved over the dropdown content.
+                "pointer-events-none opacity-0 transition-opacity duration-150",
+                "group-hover:pointer-events-auto group-hover:opacity-100",
+                "focus-visible:pointer-events-auto focus-visible:opacity-100",
+                "pointer-coarse:pointer-events-auto pointer-coarse:opacity-100",
+                "data-[state=open]:pointer-events-auto data-[state=open]:opacity-100",
+                "hover:bg-accent hover:text-foreground active:translate-y-px",
+                "outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+              )}
+              // The card is a dnd-kit draggable and opens the dialog on click:
+              // keep pointer, click, and key events on this button from reaching it.
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+              }}
+            >
+              <MoreVertical className="size-3.5" />
+              <span className="sr-only">Task actions</span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {onArchive && (
+              <DropdownMenuItem onClick={onArchive}>Archive</DropdownMenuItem>
+            )}
+            {onDelete && (
+              <DropdownMenuItem variant="destructive" onClick={onDelete}>
+                Delete
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
     </Card>
   );
@@ -175,6 +198,7 @@ export function SortableTaskCard({
         <TaskCard
           task={task}
           columnId={columnId}
+          onArchive={() => archiveTaskWithUndo(task)}
           onDelete={() => setConfirmingDelete(true)}
           disabled={disabled}
         />

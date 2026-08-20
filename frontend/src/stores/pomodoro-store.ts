@@ -18,6 +18,7 @@ export interface PomodoroSettings {
   stopAlarmMin: number; // an unacknowledged alarm gives up after N minutes
   autoStartBreak: boolean;
   dailyGoal: number; // focus blocks per day; 0 = off
+  showTimerInTabTitle: boolean;
 }
 
 export const DEFAULT_SETTINGS: PomodoroSettings = {
@@ -31,6 +32,7 @@ export const DEFAULT_SETTINGS: PomodoroSettings = {
   stopAlarmMin: 3,
   autoStartBreak: true,
   dailyGoal: 0,
+  showTimerInTabTitle: true,
 };
 
 export const PHASE_LABELS: Record<PomodoroPhase, string> = {
