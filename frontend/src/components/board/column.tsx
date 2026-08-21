@@ -37,7 +37,7 @@ export function Column({
   return (
     <div
       className={cn(
-        "flex max-h-[calc(100dvh-7.5rem)] w-72 shrink-0 flex-col gap-2 rounded-xl bg-muted/50 p-2 transition-shadow duration-150 dark:bg-muted/30",
+        "flex max-h-[calc(100dvh-7.5rem)] w-[85vw] shrink-0 snap-start flex-col gap-2 rounded-xl bg-muted/50 p-2 transition-shadow duration-150 sm:w-72 dark:bg-muted/30",
         isOver && "ring-1 ring-ring/50",
       )}
     >

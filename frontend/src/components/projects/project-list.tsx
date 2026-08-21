@@ -46,8 +46,8 @@ function ProjectRow({
 
   return (
     <tr className="border-b border-border last:border-0">
-      <td className="w-full py-2 pr-2">
-        <div className="flex items-center gap-2">
+      <td className="w-full min-w-0 py-2 pr-2">
+        <div className="flex min-w-0 items-center gap-2">
           <span
             className="size-1.5 shrink-0 rounded-full"
             style={{ backgroundColor: projectColor(colorIndex) }}

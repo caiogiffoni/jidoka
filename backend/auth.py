@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 import bcrypt
 import httpx
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlmodel import Session, select
@@ -14,6 +14,7 @@ import oauth as oauth_module
 from blocked_usernames import PROFANE_USERNAMES
 from db import get_session
 from models import AuthResponse, User, UserCreate, UserLogin, UserPublic
+from rate_limit import limiter
 
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_TTL_DAYS = 7
@@ -106,7 +107,12 @@ def get_current_user(
 
 
 @router.post("/register", response_model=AuthResponse, status_code=201)
-def register(payload: UserCreate, session: Session = Depends(get_session)):
+@limiter.limit("5/minute")
+def register(
+    request: Request,
+    payload: UserCreate,
+    session: Session = Depends(get_session),
+):
     # UserCreate already validates username/password rules and the profanity
     # blocklist; here we only check uniqueness before creating the account.
     existing_email = session.exec(
@@ -139,7 +145,12 @@ def register(payload: UserCreate, session: Session = Depends(get_session)):
 
 
 @router.post("/login", response_model=AuthResponse)
-def login(payload: UserLogin, session: Session = Depends(get_session)):
+@limiter.limit("10/minute")
+def login(
+    request: Request,
+    payload: UserLogin,
+    session: Session = Depends(get_session),
+):
     user = session.exec(select(User).where(User.email == payload.email)).first()
     if user is None or not _verify_password(payload.password, user.hashed_password):
         raise HTTPException(

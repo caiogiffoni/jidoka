@@ -17,9 +17,9 @@ export function DayBar({
   const visible = day.segments.filter((s) => s.minutes > 0);
 
   return (
-    <div className="flex flex-col items-center gap-1.5">
+    <div className="flex min-w-0 flex-col items-center gap-1.5">
       <div
-        className="flex h-40 w-6 flex-col-reverse gap-0.5"
+        className="flex h-40 w-4 flex-col-reverse gap-0.5 sm:w-6"
         role="group"
         aria-label={day.label}
       >

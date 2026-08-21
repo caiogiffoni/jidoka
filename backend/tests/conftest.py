@@ -8,10 +8,23 @@ import auth
 import db
 import main
 from models import User
+from rate_limit import limiter
 
 os.environ.setdefault(
     "JWT_SECRET_KEY", "test-secret-for-pytest-must-be-at-least-32-bytes-long"
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """Reset in-memory rate limit state before every test.
+
+    The Limiter is a module-level singleton backed by in-memory storage, so
+    limits accumulate across tests in the same process. Resetting keeps each
+    test independent.
+    """
+    limiter.reset()
+    yield
 
 
 @pytest.fixture()

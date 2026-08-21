@@ -3,7 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CalendarClock, MoreVertical, SquareCheck } from "lucide-react";
+import {
+  CalendarClock,
+  GripVertical,
+  MoreVertical,
+  SquareCheck,
+} from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
@@ -17,6 +22,22 @@ import { archiveTaskWithUndo } from "./archive-task";
 import { ConfirmDeleteDialog } from "./delete-task";
 import { TaskDialog } from "./task-dialog";
 import type { ColumnId, Project, Task } from "@/lib/types";
+
+function readCoarsePointer(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(pointer: coarse)").matches;
+}
+
+function useCoarsePointer() {
+  const [coarse, setCoarse] = useState(readCoarsePointer);
+  useEffect(() => {
+    const mql = window.matchMedia("(pointer: coarse)");
+    const handler = (event: MediaQueryListEvent) => setCoarse(event.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, []);
+  return coarse;
+}
 
 export function TaskCard({
   task,
@@ -147,6 +168,7 @@ export function SortableTaskCard({
   } = useSortable({ id: task.id, disabled });
   const [open, setOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const coarse = useCoarsePointer();
   // dnd-kit still fires a click on the card after a pointer drag ends;
   // remember the drag so that click doesn't open the dialog. The flag clears
   // shortly after the drag ends - the post-drop click (if any) fires first -
@@ -171,19 +193,26 @@ export function SortableTaskCard({
     setOpen(true);
   }
 
+  // On touch devices the board itself is a horizontal scroll container, so a
+  // full-card drag gesture conflicts with scrolling. Use a dedicated drag
+  // handle on coarse pointers and keep the desktop "grab anywhere" behavior.
+  const wrapperListeners = coarse ? undefined : listeners;
+  const wrapperAttributes = coarse ? undefined : attributes;
+
   return (
     <>
       <div
         ref={setNodeRef}
         style={{ transform: CSS.Transform.toString(transform), transition }}
         className={cn(
-          "m-0.5 touch-manipulation rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+          "relative m-0.5 touch-manipulation rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+          coarse && "pl-6",
           isDragging &&
             "border border-dashed border-muted-foreground/30 bg-muted/60 *:invisible",
         )}
         onClick={handleClick}
-        {...attributes}
-        {...listeners}
+        {...wrapperAttributes}
+        {...wrapperListeners}
         // Enter opens the task; Space is dnd-kit's lift/drop key. Everything
         // else falls through to the keyboard sensor's own handler.
         onKeyDown={(e) => {
@@ -195,6 +224,17 @@ export function SortableTaskCard({
           listeners?.onKeyDown?.(e);
         }}
       >
+        {coarse && (
+          <div
+            {...attributes}
+            {...listeners}
+            className="absolute top-1/2 left-1 z-10 -translate-y-1/2 touch-none rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground active:bg-accent"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <GripVertical className="size-4" />
+            <span className="sr-only">Drag task</span>
+          </div>
+        )}
         <TaskCard
           task={task}
           columnId={columnId}

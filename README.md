@@ -13,6 +13,7 @@ The name comes from the Toyota principle _jidoka_: automation with a human touch
 - **Markdown formatting toolbar** - bold, italic, lists, and links, one click each, on any description field.
 - **Time tracking** - start a pomodoro-style work block from any card to see how long each task actually took. Tasks optionally link to a project, and a dashboard rolls time up per project with a 7-day stacked-bar chart.
 - **Auth** - register and log in with email, username, and password. JWT access tokens are issued by FastAPI and stored in `HttpOnly` cookies by the Next.js frontend; all board endpoints require authentication and are scoped to the current user.
+- **Rate limiting** - mutation endpoints are rate-limited by IP via slowapi. Exceeding a limit returns `429 Too Many Requests`; limits are especially tight on auth (`register`/`login`), the agent SSE stream, and daily-task generation.
 - **Daily project tasks** - opt a project into a daily template - an optional title, description, and checklist, drafted in a popup that looks just like creating a real task - at creation or later; a fresh card cloned from that template is generated automatically once a day for every opted-in project, named after the project and date.
 
 ## Stack

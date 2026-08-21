@@ -288,10 +288,40 @@ export function TaskDialog({
         ) : (
           <>
             <DialogHeader>
-              <DialogTitle className="pr-32 leading-snug">
+              <DialogTitle className="pr-0 leading-snug sm:pr-32">
                 {task.title}
               </DialogTitle>
             </DialogHeader>
+            <div className="relative flex justify-end gap-1 sm:absolute sm:top-2 sm:right-10">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={startEditing}
+              >
+                <Pencil />
+                <span className="sr-only">Edit task</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => {
+                  onOpenChange(false);
+                  archiveTaskWithUndo(task);
+                }}
+              >
+                <Archive />
+                <span className="sr-only">Archive task</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => setConfirmingDelete(true)}
+              >
+                <Trash2 />
+                <span className="sr-only">Delete task</span>
+              </Button>
+            </div>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               {columnTitle && (
                 <div className="flex items-center gap-2">
@@ -441,36 +471,6 @@ export function TaskDialog({
                 </Button>
               </form>
             </div>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="absolute top-2 right-10"
-              onClick={startEditing}
-            >
-              <Pencil />
-              <span className="sr-only">Edit task</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="absolute top-2 right-18"
-              onClick={() => {
-                onOpenChange(false);
-                archiveTaskWithUndo(task);
-              }}
-            >
-              <Archive />
-              <span className="sr-only">Archive task</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="absolute top-2 right-26 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-              onClick={() => setConfirmingDelete(true)}
-            >
-              <Trash2 />
-              <span className="sr-only">Delete task</span>
-            </Button>
           </>
         )}
       </DialogContent>
