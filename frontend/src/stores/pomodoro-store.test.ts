@@ -123,6 +123,26 @@ describe("finishPhase", () => {
     usePomodoroStore.getState().finishPhase();
     expect(usePomodoroStore.getState().phase).toBe("long_break");
   });
+
+  it("resets the long-break cadence when the day changes", () => {
+    usePomodoroStore.getState().updateSettings({ longBreakEvery: 2 });
+    // Yesterday ended with cycle = 1: under the old behavior today's first
+    // block would wrongly trigger a long break.
+    usePomodoroStore.setState({
+      dayKey: "2025-12-31",
+      cycle: 1,
+      doneToday: 5,
+    });
+
+    usePomodoroStore.getState().start();
+    vi.advanceTimersByTime(DEFAULT_SETTINGS.workMin * 60_000);
+    usePomodoroStore.getState().finishPhase();
+
+    const state = usePomodoroStore.getState();
+    expect(state.phase).toBe("break");
+    expect(state.cycle).toBe(1);
+    expect(state.doneToday).toBe(1);
+  });
 });
 
 describe("catchUp", () => {
