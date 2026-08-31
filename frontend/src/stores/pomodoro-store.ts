@@ -56,7 +56,7 @@ interface PomodoroState {
   endsAt: number | null; // epoch ms, set while running
   remainingMs: number | null; // set while paused
   taskId: string | null; // board task this block counts toward
-  cycle: number; // focus blocks completed since the last long break
+  cycle: number; // focus blocks completed today since the last long break
   doneToday: number;
   dayKey: string;
   alarm: PomodoroAlarm | null;
@@ -128,13 +128,16 @@ function advance(
   const { settings } = state;
   if (state.phase === "focus") {
     const day = dayKeyOf(new Date(endedAt));
-    const cycle = state.cycle + 1;
+    const sameDay = state.dayKey === day;
+    // Both counters are per-day: yesterday's blocks must not push today
+    // into a long break, nor count toward the daily goal.
+    const cycle = (sameDay ? state.cycle : 0) + 1;
     const next: PomodoroPhase =
       cycle % settings.longBreakEvery === 0 ? "long_break" : "break";
     return {
       cycle,
       dayKey: day,
-      doneToday: (state.dayKey === day ? state.doneToday : 0) + 1,
+      doneToday: (sameDay ? state.doneToday : 0) + 1,
       phase: next,
       status: settings.autoStartBreak ? "running" : "idle",
       endsAt: settings.autoStartBreak
