@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { DailyTaskGenerator } from "@/components/daily-task-generator";
@@ -54,6 +55,7 @@ export default function RootLayout({
           <Toaster />
           <DailyTaskGenerator />
         </ThemeProvider>
+        <Analytics />
       </body>
     </html>
   );
