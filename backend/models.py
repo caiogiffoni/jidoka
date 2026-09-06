@@ -4,7 +4,13 @@ from datetime import date, datetime, timezone
 from typing import Literal
 
 from blocked_usernames import PROFANE_USERNAMES
-from pydantic import EmailStr, field_serializer, model_validator
+from pydantic import (
+    AnyHttpUrl,
+    EmailStr,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 from sqlalchemy import JSON, Column, UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
@@ -15,6 +21,16 @@ def _strip_blank_template_items(items: list[str]) -> list[str]:
     return [item.strip() for item in items if item.strip()]
 
 
+def _drop_blank_urls(value: object) -> object:
+    # Blank entries from a partially-filled list editor never reach URL
+    # validation (which would 422 on "") - they are dropped instead.
+    if value is None:
+        return []
+    if not isinstance(value, list | tuple):
+        return value
+    return [url for url in value if str(url).strip()]
+
+
 class DailyTemplate(SQLModel):
     """Drafted through a popup styled like the real "Add task" dialog, but
     it never creates a task - Project/Column in that popup are display-only
@@ -22,11 +38,20 @@ class DailyTemplate(SQLModel):
     generated); only title/description/checklist are real. `title` is
     optional - the generated card is always named after the project and
     date; a title here is just appended to that, not a replacement for it.
+    `trigger_urls` are fired once per generated card, in order: the backend
+    GETs each and appends the stripped plain-text response as a final
+    checklist item.
     """
 
     title: str | None = None
     description: str | None = None
     checklist: list[str] = Field(default_factory=list)
+    trigger_urls: list[AnyHttpUrl] = Field(default_factory=list)
+
+    @field_validator("trigger_urls", mode="before")
+    @classmethod
+    def drop_blank_trigger_urls(cls, value: object) -> object:
+        return _drop_blank_urls(value)
 
     @model_validator(mode="after")
     def clean(self) -> "DailyTemplate":
@@ -34,6 +59,19 @@ class DailyTemplate(SQLModel):
         self.description = (self.description or "").strip() or None
         self.checklist = _strip_blank_template_items(self.checklist)
         return self
+
+    def dump_for_storage(self) -> dict:
+        """JSON-safe dict for the project's daily_template column.
+
+        mode="json" renders AnyHttpUrl as a plain string (the JSON column
+        cannot encode the URL object itself). An empty trigger_urls list is
+        dropped to keep the historical key set (title/description/checklist)
+        for templates that never configured one.
+        """
+        data = self.model_dump(mode="json")
+        if not data.get("trigger_urls"):
+            data.pop("trigger_urls")
+        return data
 
 
 _USERNAME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]{2,29}$")
@@ -137,11 +175,13 @@ class Project(SQLModel, table=True):
     ) -> dict | None:
         # The JSON column returns a plain dict; model instances arrive when the
         # field is constructed from a Pydantic payload. Normalize to dicts so
-        # response serialization never warns about an unexpected type.
+        # response serialization never warns about an unexpected type. An unset
+        # trigger_url is dropped to keep the historical key set
+        # (title/description/checklist) for templates that never configured one.
         if template is None:
             return None
         if isinstance(template, DailyTemplate):
-            return template.model_dump()
+            return template.dump_for_storage()
         return template
 
 
@@ -241,6 +281,16 @@ class TaskCreate(SQLModel):
     column_id: ColumnId = "todo"
     project_id: uuid.UUID | None = None
     checklist: list[ChecklistItem] = Field(default_factory=list)
+    # Creation-time-only hooks: the backend GETs each URL once, in order,
+    # when the task is created and appends each plain-text response as a
+    # final checklist item. Not stored on the task - later updates never
+    # re-fire them.
+    trigger_urls: list[AnyHttpUrl] = Field(default_factory=list)
+
+    @field_validator("trigger_urls", mode="before")
+    @classmethod
+    def drop_blank_trigger_urls(cls, value: object) -> object:
+        return _drop_blank_urls(value)
 
     @model_validator(mode="after")
     def strip_blank_checklist_items(self) -> "TaskCreate":

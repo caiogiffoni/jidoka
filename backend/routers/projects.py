@@ -11,6 +11,7 @@ from db import get_session
 from models import Project, ProjectCreate, ProjectUpdate, Task, User
 from rate_limit import limiter
 from services import get_project_or_404
+from triggers import FetchFn, append_trigger_item
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -25,8 +26,12 @@ def create_project(
 ):
     # model_dump() recursively converts daily_template into a plain dict (or
     # None) so the JSON column can serialize it - a bare DailyTemplate
-    # instance isn't natively JSON-serializable.
-    project = Project(**payload.model_dump(), user_id=current_user.id)
+    # instance isn't natively JSON-serializable. dump_for_storage renders
+    # trigger_url as a plain string; the generic dump keeps the URL object.
+    data = payload.model_dump()
+    if payload.daily_template is not None:
+        data["daily_template"] = payload.daily_template.dump_for_storage()
+    project = Project(**data, user_id=current_user.id)
     session.add(project)
     session.commit()
     session.refresh(project)
@@ -57,7 +62,7 @@ def update_project(
     project.description = payload.description
     project.daily_enabled = payload.daily_enabled
     project.daily_template = (
-        payload.daily_template.model_dump() if payload.daily_template else None
+        payload.daily_template.dump_for_storage() if payload.daily_template else None
     )
     session.add(project)
     session.commit()
@@ -71,6 +76,7 @@ def generate_daily_tasks(
     request: Request,
     current_user: User = Depends(auth.get_current_user),
     session: Session = Depends(get_session),
+    fetcher: FetchFn | None = None,
 ):
     today = datetime.now(timezone.utc).date()
     today_iso = today.isoformat()
@@ -107,6 +113,11 @@ def generate_daily_tasks(
         title = f"Daily - {today:%d-%m-%y} - {project.name}"
         if template.get("title"):
             title += f" - {template['title']}"
+        checklist = [
+            {"text": item, "checked": False} for item in template["checklist"]
+        ]
+        for url in template.get("trigger_urls") or []:
+            append_trigger_item(checklist, url, fetcher=fetcher)
         task = Task(
             title=title,
             description=template.get("description"),
@@ -114,9 +125,7 @@ def generate_daily_tasks(
             project_id=project.id,
             user_id=current_user.id,
             position=next_position,
-            checklist=[
-                {"text": item, "checked": False} for item in template["checklist"]
-            ],
+            checklist=checklist,
         )
         next_position += 1
         project.daily_last_generated = today_iso

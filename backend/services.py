@@ -13,6 +13,7 @@ from sqlmodel import Session, select
 import auth
 from db import get_session
 from models import Project, Task, TaskCreate, TaskUpdate
+from triggers import FetchFn, append_trigger_item
 
 
 def get_task_or_404(
@@ -52,10 +53,17 @@ def reindex(tasks: list[Task]) -> None:
         t.position = index
 
 
-def create_task_service(session: Session, user_id: uuid.UUID, payload: TaskCreate) -> Task:
+def create_task_service(
+    session: Session,
+    user_id: uuid.UUID,
+    payload: TaskCreate,
+    *,
+    fetcher: FetchFn | None = None,
+) -> Task:
     """Create a task using the same logic as the manual POST /tasks endpoint.
 
     Extracted so the agent's apply node and the API share one code path.
+    Fires payload.trigger_url (if set) once here, at creation time.
     """
     if payload.project_id is not None:
         get_project_or_404(session, payload.project_id, user_id)
@@ -68,7 +76,17 @@ def create_task_service(session: Session, user_id: uuid.UUID, payload: TaskCreat
             Task.user_id == user_id,
         )
     ).one()
-    task = Task(**payload.model_dump(), user_id=user_id, position=next_position)
+    # trigger_urls are input-only (no task column) - resolve them before
+    # building the row so they never leak into Task(...).
+    task_data = payload.model_dump(exclude={"trigger_urls"})
+    task = Task(**task_data, user_id=user_id, position=next_position)
+    if payload.trigger_urls:
+        # task.checklist is the raw JSON-bound list (plain dicts at runtime,
+        # whatever the declared model type says) - the same representation the
+        # daily generation loop builds.
+        checklist: list = task.checklist
+        for url in payload.trigger_urls:
+            append_trigger_item(checklist, str(url), fetcher=fetcher)
     session.add(task)
     session.commit()
     session.refresh(task)
