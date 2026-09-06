@@ -32,10 +32,13 @@ export interface Task {
 // fields - that popup's Project/Column controls are display-only. `title`
 // is optional: the generated card is always named after the project and
 // date, with this appended - not a replacement for that name.
+// `triggerUrls` fire once per generated card, in order: the backend GETs
+// each and adds the plain-text response as a final checklist item.
 export interface DailyTemplate {
   title?: string;
   description?: string;
   checklist: string[];
+  triggerUrls?: string[];
 }
 
 export interface Project {

@@ -5,17 +5,19 @@ import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-// A plain list of checklist item texts (add/remove rows) - shared by any
-// place that drafts a checklist before it exists as real ChecklistItem rows
-// (a new task's checklist, or a project's daily-task template).
+// A plain list of item texts (add/remove rows) - shared by any place that
+// drafts a string list before it exists as real data (a new task's checklist,
+// a project's daily-task template, or trigger endpoint URLs).
 export function ChecklistItemEditor({
   items,
   onChange,
   itemPlaceholder = "e.g. write a check-in message in Slack",
+  addLabel = "Add item",
 }: {
   items: string[];
   onChange: (items: string[]) => void;
   itemPlaceholder?: string;
+  addLabel?: string;
 }) {
   const itemRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -68,7 +70,7 @@ export function ChecklistItemEditor({
         className="self-start"
         onClick={addItem}
       >
-        <Plus /> Add item
+        <Plus /> {addLabel}
       </Button>
     </div>
   );

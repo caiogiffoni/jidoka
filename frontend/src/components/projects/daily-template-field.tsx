@@ -60,6 +60,15 @@ export function DailyTemplateField({
                   ))}
                 </ul>
               )}
+              {dailyTemplate.triggerUrls && dailyTemplate.triggerUrls.length > 0 && (
+                <ul className="list-inside list-disc">
+                  {dailyTemplate.triggerUrls.map((url, index) => (
+                    <li key={index} className="italic">
+                      Calls {url}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           ) : (
             <p className="text-xs text-muted-foreground italic">

@@ -31,6 +31,7 @@ export function AddTaskDialog({ projects }: { projects: Project[] }) {
   const [columnId, setColumnId] = useState<ColumnId>("todo");
   const [projectId, setProjectId] = useState("");
   const [checklist, setChecklist] = useState<string[]>([]);
+  const [triggerUrls, setTriggerUrls] = useState<string[]>([]);
 
   function reset() {
     setTitle("");
@@ -38,6 +39,7 @@ export function AddTaskDialog({ projects }: { projects: Project[] }) {
     setColumnId("todo");
     setProjectId("");
     setChecklist([]);
+    setTriggerUrls([]);
   }
 
   async function submit() {
@@ -54,6 +56,7 @@ export function AddTaskDialog({ projects }: { projects: Project[] }) {
           .map((text) => text.trim())
           .filter(Boolean)
           .map((text) => ({ text, checked: false })),
+        triggerUrls: triggerUrls.map((url) => url.trim()).filter(Boolean),
       });
       addTask(columnId, task);
       reset();
@@ -126,6 +129,26 @@ export function AddTaskDialog({ projects }: { projects: Project[] }) {
               Checklist <span className="font-normal">(optional)</span>
             </span>
             <ChecklistItemEditor items={checklist} onChange={setChecklist} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span
+              id="new-task-trigger-url-label"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              Trigger endpoints <span className="font-normal">(optional)</span>
+            </span>
+            <div aria-labelledby="new-task-trigger-url-label">
+              <ChecklistItemEditor
+                items={triggerUrls}
+                onChange={setTriggerUrls}
+                itemPlaceholder="https://…"
+                addLabel="Add endpoint"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground italic">
+              Each endpoint is called once when the task is created; each
+              response is added as a checklist item.
+            </p>
           </div>
           <div className="flex flex-col gap-1.5">
             <label

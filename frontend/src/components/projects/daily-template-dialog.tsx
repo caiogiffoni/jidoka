@@ -17,14 +17,15 @@ import { COLUMNS, type DailyTemplate } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // Mirrors the real "Add task" dialog's shape (Title, Description,
-// Checklist, Project, Column) since that's what the user asked to trigger
-// here - but it never calls the task API. "Save template" hands
-// title/description/checklist back to the caller (a project's daily
-// template); Project and Column are shown for visual consistency only -
-// a generated card always belongs to this project and always lands in
-// To Do, so those two controls are disabled rather than wired to anything.
-// Title is optional too - the generated card is always named after the
-// project and date, with this appended rather than replacing that name.
+// Checklist, Trigger endpoint, Project, Column) since that's what the user
+// asked to trigger here - but it never calls the task API. "Save template"
+// hands title/description/checklist/triggerUrl back to the caller (a
+// project's daily template); Project and Column are shown for visual
+// consistency only - a generated card always belongs to this project and
+// always lands in To Do, so those two controls are disabled rather than
+// wired to anything. Title is optional too - the generated card is always
+// named after the project and date, with this appended rather than
+// replacing that name.
 export function DailyTemplateDialog({
   open,
   onOpenChange,
@@ -45,6 +46,9 @@ export function DailyTemplateDialog({
   const [checklist, setChecklist] = useState<string[]>(
     initialTemplate?.checklist ?? [],
   );
+  const [triggerUrls, setTriggerUrls] = useState<string[]>(
+    initialTemplate?.triggerUrls ?? [],
+  );
 
   // Reseed from what's actually saved every time the popup opens, so a
   // previous cancel never leaks into the next open - adjusted during render
@@ -56,6 +60,7 @@ export function DailyTemplateDialog({
       setTitle(initialTemplate?.title ?? "");
       setDescription(initialTemplate?.description ?? "");
       setChecklist(initialTemplate?.checklist ?? []);
+      setTriggerUrls(initialTemplate?.triggerUrls ?? []);
     }
   }
 
@@ -64,6 +69,7 @@ export function DailyTemplateDialog({
       title: title.trim() || undefined,
       description: description.trim() || undefined,
       checklist: checklist.map((item) => item.trim()).filter(Boolean),
+      triggerUrls: triggerUrls.map((url) => url.trim()).filter(Boolean),
     });
     onOpenChange(false);
   }
@@ -115,6 +121,26 @@ export function DailyTemplateDialog({
               Checklist <span className="font-normal">(optional)</span>
             </span>
             <ChecklistItemEditor items={checklist} onChange={setChecklist} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span
+              id="daily-template-trigger-url-label"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              Trigger endpoints <span className="font-normal">(optional)</span>
+            </span>
+            <div aria-labelledby="daily-template-trigger-url-label">
+              <ChecklistItemEditor
+                items={triggerUrls}
+                onChange={setTriggerUrls}
+                itemPlaceholder="https://…"
+                addLabel="Add endpoint"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground italic">
+              Each endpoint is called once per generated card; each response
+              is added as a checklist item.
+            </p>
           </div>
           <div className="flex flex-col gap-1.5">
             <span className="text-xs font-medium text-muted-foreground">

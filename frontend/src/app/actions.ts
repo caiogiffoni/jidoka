@@ -35,6 +35,7 @@ function dailyTemplateBody(template: DailyTemplate | null | undefined) {
     title: template.title ?? null,
     description: template.description ?? null,
     checklist: template.checklist,
+    trigger_urls: template.triggerUrls ?? [],
   };
 }
 
@@ -44,6 +45,9 @@ export async function createTask(input: {
   description?: string;
   projectId?: string;
   checklist?: ChecklistItem[];
+  // Each is called once by the backend at creation, in order; the
+  // plain-text responses are appended as checklist items.
+  triggerUrls?: string[];
 }): Promise<Task> {
   const res = await apiFetch(`${BACKEND_URL}/tasks`, {
     method: "POST",
@@ -54,6 +58,7 @@ export async function createTask(input: {
       column_id: input.columnId,
       project_id: input.projectId ?? null,
       checklist: input.checklist ?? [],
+      trigger_urls: input.triggerUrls ?? [],
     }),
   });
   if (!res.ok) {
