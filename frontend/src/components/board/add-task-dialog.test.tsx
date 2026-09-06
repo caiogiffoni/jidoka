@@ -56,6 +56,7 @@ it("submits the trimmed title, chosen project, and selected column", async () =>
     description: undefined,
     projectId: "p1",
     checklist: [],
+    triggerUrls: [],
   });
   expect(useBoardStore.getState().tasks.in_progress).toEqual([created]);
 });
@@ -73,4 +74,41 @@ it("keeps the dialog open and leaves the store untouched when the save fails", a
 
   await screen.findByRole("dialog"); // still open after the rejection
   expect(useBoardStore.getState().tasks.todo).toHaveLength(0);
+});
+
+it("sends the trimmed trigger endpoints and clears them after submitting", async () => {
+  const user = userEvent.setup();
+  const created: Task = { id: "t2", title: "Practice", checklist: [] };
+  vi.mocked(createTask).mockResolvedValue(created);
+
+  render(<AddTaskDialog projects={projects} />);
+  await user.click(screen.getByRole("button", { name: "Add task" }));
+
+  const dialog = within(await screen.findByRole("dialog"));
+  await user.type(dialog.getByLabelText("Title"), "Practice");
+  await user.click(dialog.getByRole("button", { name: "Add endpoint" }));
+  await user.type(
+    dialog.getByPlaceholderText("https://…"),
+    "  https://lambda.example/leetcode  ",
+  );
+  await user.click(dialog.getByRole("button", { name: "Add endpoint" }));
+  const rows = dialog.getAllByPlaceholderText("https://…");
+  await user.type(rows[rows.length - 1], "https://lambda.example/article");
+  await user.click(dialog.getByRole("button", { name: "Add task" }));
+
+  expect(createTask).toHaveBeenCalledWith({
+    columnId: "todo",
+    title: "Practice",
+    description: undefined,
+    projectId: undefined,
+    checklist: [],
+    triggerUrls: [
+      "https://lambda.example/leetcode",
+      "https://lambda.example/article",
+    ],
+  });
+
+  await user.click(screen.getByRole("button", { name: "Add task" }));
+  const reopened = within(await screen.findByRole("dialog"));
+  expect(reopened.queryByPlaceholderText("https://…")).not.toBeInTheDocument();
 });

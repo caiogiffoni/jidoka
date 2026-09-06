@@ -54,6 +54,21 @@ it("prefills title, description, and checklist from initialTemplate", async () =
   expect(dialog.getByDisplayValue("Post update")).toBeInTheDocument();
 });
 
+it("prefills the trigger endpoints from initialTemplate", async () => {
+  render(
+    <Wrapper
+      initialTemplate={{
+        checklist: ["Solve"],
+        triggerUrls: ["https://lambda.example/leetcode"],
+      }}
+      onSave={vi.fn()}
+    />,
+  );
+  const dialog = within(await screen.findByRole("dialog"));
+
+  expect(dialog.getByDisplayValue("https://lambda.example/leetcode")).toBeInTheDocument();
+});
+
 it("trims fields, omits blanks, and saves via onSave then closes", async () => {
   const user = userEvent.setup();
   const onSave = vi.fn();
@@ -66,12 +81,18 @@ it("trims fields, omits blanks, and saves via onSave then closes", async () => {
     dialog.getByPlaceholderText("e.g. write a check-in message in Slack"),
     "  Post update  ",
   );
+  await user.click(dialog.getByRole("button", { name: "Add endpoint" }));
+  await user.type(
+    dialog.getByPlaceholderText("https://…"),
+    "  https://lambda.example/pick  ",
+  );
   await user.click(dialog.getByRole("button", { name: "Save template" }));
 
   expect(onSave).toHaveBeenCalledWith({
     title: "Standup",
     description: undefined,
     checklist: ["Post update"],
+    triggerUrls: ["https://lambda.example/pick"],
   });
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
@@ -88,6 +109,7 @@ it("saves an empty template (no title/description required)", async () => {
     title: undefined,
     description: undefined,
     checklist: [],
+    triggerUrls: [],
   });
 });
 
