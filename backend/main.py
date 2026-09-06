@@ -1,10 +1,15 @@
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+
+# main.py -> backend -> project root; same trick as tests/llm/conftest.py
+load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
 
 import auth
 from agent.routes import router as agent_router
