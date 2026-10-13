@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -10,6 +10,7 @@ import {
   closestCorners,
   useSensor,
   useSensors,
+  type DragCancelEvent,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
@@ -37,22 +38,35 @@ export function Board({
   initialTasks: TasksByColumn;
   projects: Project[];
 }) {
-  // Hydrate the store from the server-fetched board exactly once, before the
-  // first subscription read, so SSR and the first client render agree. After
-  // that the store owns board state; mutations update it optimistically.
-  const hydrated = useRef<boolean | null>(null);
-  if (hydrated.current == null) {
-    hydrated.current = true;
-    useBoardStore.setState({ tasks: initialTasks });
+  // Hydrate the store from the server-fetched board before the first
+  // subscription read, so SSR and the first client render agree.
+  const syncedTasks = useRef<TasksByColumn | null>(null);
+  if (syncedTasks.current == null) {
+    syncedTasks.current = initialTasks;
+    useBoardStore.getState().syncFromServer(initialTasks);
   }
 
   const tasks = useBoardStore((s) => s.tasks);
   const columnOf = useBoardStore((s) => s.columnOf);
   const moveTaskToColumn = useBoardStore((s) => s.moveTaskToColumn);
   const reorderTask = useBoardStore((s) => s.reorderTask);
+  const placeTask = useBoardStore((s) => s.placeTask);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [movesInFlight, setMovesInFlight] = useState(0);
   const [filters, setFilters] = useState(emptyFilters);
   const dragOrigin = useRef<{ column: ColumnId; index: number } | null>(null);
+
+  // Resync whenever the server sends a new board (router.refresh() after an
+  // agent apply, revalidatePath from a Server Action, daily-task generation,
+  // restoring an archived task). Deferred while a drag is active or a drop is
+  // still being persisted: the props would predate the drop and snap the card
+  // back. Once both settle the effect re-runs with the latest props.
+  useEffect(() => {
+    if (activeTask || movesInFlight > 0) return;
+    if (initialTasks === syncedTasks.current) return;
+    syncedTasks.current = initialTasks;
+    useBoardStore.getState().syncFromServer(initialTasks);
+  }, [initialTasks, activeTask, movesInFlight]);
 
   const normalizedSearch = filters.search.trim().toLowerCase();
   const filteredTasks: TasksByColumn = useMemo(() => {
@@ -163,15 +177,25 @@ export function Board({
       (t) => t.id === taskId,
     );
     if (finalColumn === origin.column && finalIndex === origin.index) return;
-    moveTask({ taskId, columnId: finalColumn, position: finalIndex }).catch(
-      (error) => {
+    setMovesInFlight((n) => n + 1);
+    moveTask({ taskId, columnId: finalColumn, position: finalIndex })
+      .catch((error) => {
         console.error("Could not persist move:", error);
         useBoardStore.getState().placeTask(taskId, origin.column, origin.index);
         toast.error("Couldn't save that move", {
           description: "The card was returned to its previous spot. Try again.",
         });
-      },
-    );
+      })
+      .finally(() => setMovesInFlight((n) => n - 1));
+  }
+
+  // Escape mid-drag: undo any cross-column preview handleDragOver applied
+  // and put the card back where it was picked up.
+  function handleDragCancel({ active }: DragCancelEvent) {
+    setActiveTask(null);
+    const origin = dragOrigin.current;
+    dragOrigin.current = null;
+    if (origin) placeTask(String(active.id), origin.column, origin.index);
   }
 
   return (
@@ -181,7 +205,7 @@ export function Board({
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
-      onDragCancel={() => setActiveTask(null)}
+      onDragCancel={handleDragCancel}
       accessibility={{
         screenReaderInstructions: {
           draggable:
