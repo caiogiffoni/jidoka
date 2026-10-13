@@ -11,14 +11,29 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ detail: "unauthorized" }, { status: 401 });
   }
 
-  const backendRes = await fetch(`${BACKEND_URL}/agent/stream`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: await request.text(),
-  });
+  let backendRes: Response;
+  try {
+    backendRes = await fetch(`${BACKEND_URL}/agent/stream`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: await request.text(),
+      // Cancel the upstream agent run when the browser aborts (unmount, new send).
+      signal: request.signal,
+    });
+  } catch (err) {
+    if (request.signal.aborted) {
+      // Client is gone; nobody reads this response.
+      return new NextResponse(null, { status: 499 });
+    }
+    console.error("agent stream proxy failed", err);
+    return NextResponse.json(
+      { detail: "Agent backend is unreachable" },
+      { status: 502 },
+    );
+  }
 
   return new NextResponse(backendRes.body, {
     status: backendRes.status,
