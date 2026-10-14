@@ -99,10 +99,15 @@ export function ChatPanel({ open, onOpenChange, onApply }: ChatPanelProps) {
                 ))}
               </ul>
               <div className="mt-3 flex gap-2">
-                <Button onClick={approve} size="sm">
+                <Button onClick={approve} size="sm" disabled={status === "streaming"}>
                   Approve
                 </Button>
-                <Button onClick={reject} variant="outline" size="sm">
+                <Button
+                  onClick={reject}
+                  variant="outline"
+                  size="sm"
+                  disabled={status === "streaming"}
+                >
                   Reject
                 </Button>
               </div>

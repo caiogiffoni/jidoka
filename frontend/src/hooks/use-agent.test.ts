@@ -327,5 +327,254 @@ describe("useAgent", () => {
     await waitFor(() => {
       expect(result.current.error).toBe("LLM failed");
     });
+    // The trailing "done" must not flip the status back to idle.
+    expect(result.current.status).toBe("error");
+  });
+
+  it("dispatches events split across chunk boundaries", async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(
+        makeStream([
+          "event: mess",
+          'age\ndata: {"role":"assistant","con',
+          'tent":"Hello"}\n',
+          "\nevent: done\ndata: {}\n",
+          "\n",
+        ]),
+        { headers: { "content-type": "text/event-stream" } },
+      ),
+    );
+
+    const { result } = renderHook(() => useAgent());
+
+    await act(async () => {
+      await result.current.send("Hi");
+    });
+
+    expect(result.current.messages).toContainEqual(
+      expect.objectContaining({ role: "assistant", content: "Hello" }),
+    );
+    expect(result.current.status).toBe("idle");
+  });
+
+  it("dispatches events as they arrive, before the stream ends", async () => {
+    const encoder = new TextEncoder();
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        controller = c;
+      },
+    });
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(body, { headers: { "content-type": "text/event-stream" } }),
+    );
+
+    const { result } = renderHook(() => useAgent());
+
+    let sendPromise!: Promise<void>;
+    act(() => {
+      sendPromise = result.current.send("Hi");
+    });
+
+    controller.enqueue(
+      encoder.encode('event: message\ndata: {"role":"assistant","content":"Thinking"}\n\n'),
+    );
+
+    await waitFor(() => {
+      expect(result.current.messages).toContainEqual(
+        expect.objectContaining({ role: "assistant", content: "Thinking" }),
+      );
+    });
+    expect(result.current.status).toBe("streaming");
+
+    await act(async () => {
+      controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+      controller.close();
+      await sendPromise;
+    });
+
+    expect(result.current.status).toBe("idle");
+  });
+
+  it("surfaces the FastAPI detail and sets error status on a non-ok response", async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: "Rate limit exceeded" }), {
+        status: 429,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    const { result } = renderHook(() => useAgent());
+
+    await act(async () => {
+      await result.current.send("Add a task");
+    });
+
+    expect(result.current.status).toBe("error");
+    expect(result.current.error).toBe("Rate limit exceeded");
+  });
+
+  it("falls back to the HTTP status when a non-ok response has no detail", async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response("oops", { status: 500, statusText: "Internal Server Error" }),
+    );
+
+    const { result } = renderHook(() => useAgent());
+
+    await act(async () => {
+      await result.current.send("Add a task");
+    });
+
+    expect(result.current.status).toBe("error");
+    expect(result.current.error).toContain("500");
+  });
+
+  it("leaves streaming status when the stream ends without a terminal event", async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(
+        makeStream(['event: message\ndata: {"role":"assistant","content":"Partial"}\n\n']),
+        { headers: { "content-type": "text/event-stream" } },
+      ),
+    );
+
+    const { result } = renderHook(() => useAgent());
+
+    await act(async () => {
+      await result.current.send("Hi");
+    });
+
+    expect(result.current.status).toBe("error");
+    expect(result.current.error).toMatch(/ended unexpectedly/i);
+  });
+
+  it("keeps the pending diff when the approve request fails, so it can be retried", async () => {
+    vi.mocked(global.fetch)
+      .mockResolvedValueOnce(
+        new Response(
+          makeStream([
+            'event: interrupt\ndata: {"changes":[{"type":"create_task","title":"Wire HITL flow","column_id":"todo"}]}\n\n',
+            "event: done\ndata: {}\n\n",
+          ]),
+          { headers: { "content-type": "text/event-stream" } },
+        ),
+      )
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(
+        new Response(
+          makeStream([
+            'event: apply\ndata: {"created_tasks":[{"id":"t1","title":"Wire HITL flow","column_id":"todo"}]}\n\n',
+            "event: done\ndata: {}\n\n",
+          ]),
+          { headers: { "content-type": "text/event-stream" } },
+        ),
+      );
+
+    const onApply = vi.fn();
+    const { result } = renderHook(() => useAgent({ onApply }));
+
+    await act(async () => {
+      await result.current.send("Add a task");
+    });
+    await waitFor(() => expect(result.current.status).toBe("waiting"));
+
+    await act(async () => {
+      await result.current.approve();
+    });
+
+    expect(result.current.error).toBe("Failed to fetch");
+    expect(result.current.pendingDiff).toEqual({
+      changes: [expect.objectContaining({ title: "Wire HITL flow" })],
+    });
+    expect(result.current.status).toBe("waiting");
+    expect(onApply).not.toHaveBeenCalled();
+
+    // Retry succeeds.
+    await act(async () => {
+      await result.current.approve();
+    });
+
+    expect(result.current.pendingDiff).toBeNull();
+    expect(result.current.status).toBe("idle");
+    expect(result.current.error).toBeNull();
+    expect(onApply).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the pending diff when the reject request gets a non-ok response", async () => {
+    vi.mocked(global.fetch)
+      .mockResolvedValueOnce(
+        new Response(
+          makeStream([
+            'event: interrupt\ndata: {"changes":[{"type":"create_task","title":"Keep me"}]}\n\n',
+            "event: done\ndata: {}\n\n",
+          ]),
+          { headers: { "content-type": "text/event-stream" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ detail: "Server exploded" }), { status: 500 }),
+      );
+
+    const { result } = renderHook(() => useAgent());
+
+    await act(async () => {
+      await result.current.send("Add a task");
+    });
+    await act(async () => {
+      await result.current.reject();
+    });
+
+    expect(result.current.error).toBe("Server exploded");
+    expect(result.current.pendingDiff).not.toBeNull();
+  });
+
+  it("aborts the in-flight request on unmount without setting an error", async () => {
+    let capturedSignal: AbortSignal | undefined;
+    vi.mocked(global.fetch).mockImplementationOnce((_url, init) => {
+      capturedSignal = init?.signal ?? undefined;
+      return new Promise((_resolve, reject) => {
+        capturedSignal?.addEventListener("abort", () => {
+          reject(new DOMException("The operation was aborted.", "AbortError"));
+        });
+      });
+    });
+
+    const { result, unmount } = renderHook(() => useAgent());
+
+    let sendPromise!: Promise<void>;
+    act(() => {
+      sendPromise = result.current.send("Hi");
+    });
+    expect(result.current.status).toBe("streaming");
+
+    unmount();
+    await sendPromise;
+
+    expect(capturedSignal?.aborted).toBe(true);
+    expect(result.current.error).toBeNull();
+  });
+
+  it("uses the same thread id across mounts", async () => {
+    vi.mocked(global.fetch).mockImplementation(async () =>
+      new Response(makeStream(["event: done\ndata: {}\n\n"]), {
+        headers: { "content-type": "text/event-stream" },
+      }),
+    );
+
+    const first = renderHook(() => useAgent());
+    await act(async () => {
+      await first.result.current.send("one");
+    });
+    first.unmount();
+
+    const second = renderHook(() => useAgent());
+    await act(async () => {
+      await second.result.current.send("two");
+    });
+
+    const threadIds = vi
+      .mocked(global.fetch)
+      .mock.calls.map(([, init]) => JSON.parse(String(init?.body)).thread_id);
+    expect(threadIds).toHaveLength(2);
+    expect(threadIds[0]).toBe(threadIds[1]);
   });
 });
