@@ -52,9 +52,27 @@ def _validate_username(value: str) -> str:
     return value
 
 
+# bcrypt only hashes the first 72 bytes and bcrypt>=5 raises on longer input,
+# so cap passwords there. Measured in UTF-8 bytes, not characters.
+PASSWORD_MAX_BYTES = 72
+
+
+def password_too_long(value: str) -> bool:
+    return len(value.encode("utf-8")) > PASSWORD_MAX_BYTES
+
+
+def normalize_email(value: str) -> str:
+    return value.strip().lower()
+
+
 def _validate_password(value: str) -> str:
     if len(value) < 8:
         raise ValueError("password must be at least 8 characters")
+    if password_too_long(value):
+        raise ValueError(
+            f"password must be at most {PASSWORD_MAX_BYTES} bytes "
+            "(non-ASCII characters count as more than one byte)"
+        )
     if not _PASSWORD_SPECIAL_RE.search(value):
         raise ValueError("password must contain at least one special character")
     return value
@@ -84,6 +102,7 @@ class UserCreate(SQLModel):
 
     @model_validator(mode="after")
     def validate(self) -> "UserCreate":
+        self.email = normalize_email(self.email)
         self.username = _validate_username(self.username)
         self.password = _validate_password(self.password)
         return self
@@ -92,6 +111,11 @@ class UserCreate(SQLModel):
 class UserLogin(SQLModel):
     email: EmailStr
     password: str
+
+    @model_validator(mode="after")
+    def normalize(self) -> "UserLogin":
+        self.email = normalize_email(self.email)
+        return self
 
 
 class UserPublic(SQLModel):

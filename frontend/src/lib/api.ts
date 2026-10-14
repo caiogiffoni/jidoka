@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 
 import { AUTH_COOKIE } from "./auth";
+import { proxyHeaders } from "./proxy-headers";
 import type {
   ChecklistItem,
   ColumnId,
@@ -19,6 +20,11 @@ export async function authHeaders(): Promise<Record<string, string>> {
   const token = cookieStore.get(AUTH_COOKIE)?.value;
   if (!token) return {};
   return { Authorization: `Bearer ${token}` };
+}
+
+/** Auth plus client-IP forwarding headers for server-side calls to FastAPI. */
+export async function backendHeaders(): Promise<Record<string, string>> {
+  return { ...(await proxyHeaders()), ...(await authHeaders()) };
 }
 
 export interface ApiTask {
@@ -83,7 +89,7 @@ export async function fetchProjects(): Promise<Project[]> {
   try {
     const res = await fetch(`${BACKEND_URL}/projects`, {
       cache: "no-store",
-      headers: await authHeaders(),
+      headers: await backendHeaders(),
     });
     if (!res.ok) throw new Error(`GET /projects failed: ${res.status}`);
     const apiProjects: ApiProject[] = await res.json();
@@ -107,7 +113,7 @@ export async function fetchDailyStats(
   try {
     const res = await fetch(
       `${BACKEND_URL}/work-blocks/stats/daily?days=${days}`,
-      { cache: "no-store", headers: await authHeaders() },
+      { cache: "no-store", headers: await backendHeaders() },
     );
     if (!res.ok) {
       throw new Error(`GET /work-blocks/stats/daily failed: ${res.status}`);
@@ -131,7 +137,7 @@ export async function fetchTasksByColumn(): Promise<TasksByColumn> {
   try {
     const res = await fetch(`${BACKEND_URL}/tasks`, {
       cache: "no-store",
-      headers: await authHeaders(),
+      headers: await backendHeaders(),
     });
     if (!res.ok) throw new Error(`GET /tasks failed: ${res.status}`);
     apiTasks = await res.json();
