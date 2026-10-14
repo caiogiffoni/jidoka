@@ -5,8 +5,9 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { AUTH_COOKIE } from "@/lib/auth";
 import type { OAuthErrorCode } from "@/lib/oauth-errors";
+import { proxyHeaders } from "@/lib/proxy-headers";
 import {
-  authHeaders,
+  backendHeaders,
   BACKEND_URL,
   toProject,
   toTask,
@@ -24,7 +25,7 @@ import type {
 
 async function apiFetch(input: string, init: RequestInit = {}) {
   const headers: Record<string, string> = {
-    ...(await authHeaders()),
+    ...(await backendHeaders()),
     ...((init.headers as Record<string, string> | undefined) ?? {}),
   };
   return fetch(input, { ...init, headers });
@@ -386,7 +387,7 @@ export async function login(
 
   const res = await fetch(`${BACKEND_URL}/auth/login`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...(await proxyHeaders()) },
     body: JSON.stringify({ email, password }),
   });
   if (!res.ok) {
@@ -414,6 +415,14 @@ export async function register(
   if (password.length < 8) {
     return { type: "error", message: "Password must be at least 8 characters." };
   }
+  // bcrypt's limit, enforced by the backend in UTF-8 bytes, not characters.
+  if (new TextEncoder().encode(password).length > 72) {
+    return {
+      type: "error",
+      message:
+        "Password must be at most 72 bytes (accented letters and emoji count as more than one).",
+    };
+  }
   if (!/[^A-Za-z0-9\s]/.test(password)) {
     return {
       type: "error",
@@ -426,7 +435,7 @@ export async function register(
 
   const res = await fetch(`${BACKEND_URL}/auth/register`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...(await proxyHeaders()) },
     body: JSON.stringify({ email, username: email.split("@")[0], password }),
   });
   if (!res.ok) {
@@ -483,7 +492,7 @@ export async function requireAuth(): Promise<User> {
 
   const res = await fetch(`${BACKEND_URL}/auth/me`, {
     cache: "no-store",
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { ...(await proxyHeaders()), Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
     redirect("/login");

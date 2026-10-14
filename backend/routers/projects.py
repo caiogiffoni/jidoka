@@ -9,14 +9,14 @@ from sqlmodel import Session, select
 import auth
 from db import get_session
 from models import Project, ProjectCreate, ProjectUpdate, Task, User
-from rate_limit import limiter
+from rate_limit import limiter, user_or_ip_key
 from services import get_project_or_404
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
 @router.post("", response_model=Project, status_code=201)
-@limiter.limit("200/minute")
+@limiter.limit("200/minute", key_func=user_or_ip_key)
 def create_project(
     request: Request,
     payload: ProjectCreate,
@@ -66,7 +66,7 @@ def update_project(
 
 
 @router.post("/daily-tasks/generate", response_model=list[Task], status_code=201)
-@limiter.limit("5/minute")
+@limiter.limit("5/minute", key_func=user_or_ip_key)
 def generate_daily_tasks(
     request: Request,
     current_user: User = Depends(auth.get_current_user),

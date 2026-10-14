@@ -102,6 +102,112 @@ def test_login_rejects_unknown_email(anon_client):
     assert response.status_code == 401
 
 
+def test_register_rejects_password_over_72_bytes(anon_client):
+    response = _register(anon_client, "long@example.com", "longuser", "a!" * 37)
+    assert response.status_code == 422
+    assert "72 bytes" in response.text
+
+
+def test_register_measures_password_length_in_utf8_bytes(anon_client):
+    # 37 characters but 73 bytes: each "é" is 2 bytes in UTF-8.
+    password = "!" + "é" * 36
+    assert len(password) < 72 < len(password.encode("utf-8"))
+    response = _register(anon_client, "utf8@example.com", "utf8user", password)
+    assert response.status_code == 422
+
+
+def test_register_accepts_password_of_exactly_72_bytes(anon_client):
+    password = "!" + "a" * 71
+    response = _register(anon_client, "exact@example.com", "exactuser", password)
+    assert response.status_code == 201
+    login = anon_client.post(
+        "/auth/login", json={"email": "exact@example.com", "password": password}
+    )
+    assert login.status_code == 200
+
+
+def test_login_with_password_over_72_bytes_is_401_not_500(anon_client):
+    _register(anon_client, "longlogin@example.com", "longlogin", "Password1!")
+    response = anon_client.post(
+        "/auth/login",
+        json={"email": "longlogin@example.com", "password": "Password1!" * 10},
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "invalid email or password"
+
+
+def test_register_normalizes_email(anon_client):
+    response = _register(anon_client, "  Mixed@Example.COM ", "mixeduser", "Password1!")
+    assert response.status_code == 201
+    assert response.json()["user"]["email"] == "mixed@example.com"
+
+
+def test_register_rejects_duplicate_email_case_insensitively(anon_client):
+    assert _register(anon_client, "Foo@x.com", "fooone", "Password1!").status_code == 201
+    response = _register(anon_client, "foo@X.com", "footwo", "Password2!")
+    assert response.status_code == 409
+    assert response.json()["detail"] == "email already registered"
+
+
+def test_register_duplicate_check_matches_legacy_mixed_case_rows(anon_client, session):
+    session.add(
+        User(
+            email="Legacy@Example.com",
+            username="legacyuser",
+            hashed_password=auth._hash_password("Password1!"),
+        )
+    )
+    session.flush()
+    response = _register(anon_client, "legacy@example.com", "legacytwo", "Password1!")
+    assert response.status_code == 409
+
+
+def test_login_is_case_insensitive(anon_client):
+    _register(anon_client, "case@example.com", "caseuser", "Password1!")
+    response = anon_client.post(
+        "/auth/login", json={"email": "CASE@Example.com", "password": "Password1!"}
+    )
+    assert response.status_code == 200
+
+
+def test_login_matches_legacy_mixed_case_rows(anon_client, session):
+    session.add(
+        User(
+            email="OldUser@Example.com",
+            username="olduser",
+            hashed_password=auth._hash_password("Password1!"),
+        )
+    )
+    session.flush()
+    response = anon_client.post(
+        "/auth/login", json={"email": "olduser@example.com", "password": "Password1!"}
+    )
+    assert response.status_code == 200
+
+
+def test_register_race_integrity_error_returns_409(anon_client, monkeypatch):
+    """Two concurrent registrations can both pass the pre-check; the loser's
+    unique-constraint violation must surface as the same 409, not a 500."""
+    assert _register(anon_client, "race@example.com", "raceone", "Password1!").status_code == 201
+
+    real_conflict = auth._registration_conflict
+    calls = {"n": 0}
+
+    def skip_first_check(*args, **kwargs):
+        # Simulate losing the race: the pre-check sees no row, the post-
+        # IntegrityError lookup sees the winner.
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return None
+        return real_conflict(*args, **kwargs)
+
+    monkeypatch.setattr(auth, "_registration_conflict", skip_first_check)
+    response = _register(anon_client, "race@example.com", "racetwo", "Password1!")
+    assert response.status_code == 409
+    assert response.json()["detail"] == "email already registered"
+    assert calls["n"] == 2
+
+
 def test_me_returns_current_user(anon_client):
     registered = _register(
         anon_client, "me@example.com", "meuser", "Password1!"

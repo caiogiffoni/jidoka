@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { AUTH_COOKIE } from "@/lib/auth";
 import { BACKEND_URL } from "@/lib/api";
+import { proxyHeaders } from "@/lib/proxy-headers";
 
 export async function POST(request: NextRequest) {
   const cookieStore = await cookies();
@@ -17,6 +18,7 @@ export async function POST(request: NextRequest) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...(await proxyHeaders()),
         Authorization: `Bearer ${token}`,
       },
       body: await request.text(),
