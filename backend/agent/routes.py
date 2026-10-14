@@ -20,7 +20,7 @@ from agent.graph import graph
 from agent.state import ProposedDiff
 from db import get_session
 from models import User
-from rate_limit import limiter
+from rate_limit import limiter, user_or_ip_key
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -106,7 +106,7 @@ def _translate_chunk(chunk: dict) -> list[tuple[str, Any]]:
 
 
 @router.post("/stream")
-@limiter.limit("5/minute")
+@limiter.limit("5/minute", key_func=user_or_ip_key)
 def stream_agent(
     request: Request,
     payload: AgentStreamRequest,

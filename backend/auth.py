@@ -8,13 +8,22 @@ import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 import oauth as oauth_module
 from blocked_usernames import PROFANE_USERNAMES
 from db import get_session
-from models import AuthResponse, User, UserCreate, UserLogin, UserPublic
-from rate_limit import limiter
+from models import (
+    AuthResponse,
+    User,
+    UserCreate,
+    UserLogin,
+    UserPublic,
+    password_too_long,
+)
+from rate_limit import limiter, login_email_allowed, record_failed_login
 
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_TTL_DAYS = 7
@@ -38,9 +47,14 @@ def _hash_password(password: str) -> str:
 
 
 def _verify_password(plain: str, hashed: str | None) -> bool:
-    if hashed is None:
+    # Registration caps passwords at 72 bytes (bcrypt's limit; bcrypt>=5 raises
+    # ValueError beyond it), so a longer one can never match - fail cleanly.
+    if hashed is None or password_too_long(plain):
         return False
-    return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    try:
+        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except ValueError:
+        return False
 
 
 def _create_token(user: User) -> str:
@@ -113,25 +127,12 @@ def register(
     payload: UserCreate,
     session: Session = Depends(get_session),
 ):
-    # UserCreate already validates username/password rules and the profanity
-    # blocklist; here we only check uniqueness before creating the account.
-    existing_email = session.exec(
-        select(User).where(User.email == payload.email)
-    ).first()
-    if existing_email is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="email already registered",
-        )
-
-    existing_username = session.exec(
-        select(User).where(User.username == payload.username)
-    ).first()
-    if existing_username is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="username already taken",
-        )
+    # UserCreate already validates username/password rules, the profanity
+    # blocklist, and normalizes the email; here we only check uniqueness
+    # before creating the account.
+    conflict = _registration_conflict(session, payload.email, payload.username)
+    if conflict is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=conflict)
 
     user = User(
         email=payload.email,
@@ -139,9 +140,36 @@ def register(
         hashed_password=_hash_password(payload.password),
     )
     session.add(user)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        # A concurrent registration won the race between the check above and
+        # this insert; answer with the same 409 the pre-check would have.
+        session.rollback()
+        conflict = _registration_conflict(session, payload.email, payload.username)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=conflict or "email or username already taken",
+        ) from None
     session.refresh(user)
     return _auth_response(user)
+
+
+def _registration_conflict(session: Session, email: str, username: str) -> str | None:
+    # Case-insensitive so rows created before emails were normalized still
+    # count as duplicates.
+    existing_email = session.exec(
+        select(User).where(func.lower(User.email) == email.lower())
+    ).first()
+    if existing_email is not None:
+        return "email already registered"
+
+    existing_username = session.exec(
+        select(User).where(User.username == username)
+    ).first()
+    if existing_username is not None:
+        return "username already taken"
+    return None
 
 
 @router.post("/login", response_model=AuthResponse)
@@ -151,8 +179,20 @@ def login(
     payload: UserLogin,
     session: Session = Depends(get_session),
 ):
-    user = session.exec(select(User).where(User.email == payload.email)).first()
+    # Per-email budget on top of the per-IP decorator limit, so one account
+    # can't be brute-forced from many IPs.
+    if not login_email_allowed(payload.email):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="too many failed login attempts for this account, try again later",
+        )
+    # payload.email is normalized; lower() the column so existing mixed-case
+    # rows still match.
+    user = session.exec(
+        select(User).where(func.lower(User.email) == payload.email)
+    ).first()
     if user is None or not _verify_password(payload.password, user.hashed_password):
+        record_failed_login(payload.email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="invalid email or password",

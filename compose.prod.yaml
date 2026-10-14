@@ -23,6 +23,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://jidoka:${POSTGRES_PASSWORD}@db:5432/jidoka
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      INTERNAL_PROXY_SECRET: ${INTERNAL_PROXY_SECRET:-}
       BACKEND_URL: ${BACKEND_URL}
       FRONTEND_URL: ${FRONTEND_URL}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
