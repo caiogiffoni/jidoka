@@ -11,8 +11,16 @@ const emptyBoard: TasksByColumn = {
 
 interface BoardState {
   tasks: TasksByColumn;
+  // Tasks optimistically removed (delete/archive) whose server call hasn't
+  // landed yet, e.g. while the undo toast is still up. A server resync must
+  // not bring them back.
+  pendingRemovals: ReadonlySet<string>;
   columnOf: (taskId: string) => ColumnId | undefined;
   setTasks: (tasks: TasksByColumn) => void;
+  // Replace board state with fresh server data, minus pending removals.
+  syncFromServer: (tasks: TasksByColumn) => void;
+  markPendingRemoval: (taskId: string) => void;
+  clearPendingRemoval: (taskId: string) => void;
   addTask: (columnId: ColumnId, task: Task) => void;
   updateTask: (
     taskId: string,
@@ -35,6 +43,7 @@ interface BoardState {
 
 export const useBoardStore = create<BoardState>((set, get) => ({
   tasks: emptyBoard,
+  pendingRemovals: new Set<string>(),
 
   columnOf: (taskId) => {
     const { tasks } = get();
@@ -44,6 +53,30 @@ export const useBoardStore = create<BoardState>((set, get) => ({
   },
 
   setTasks: (tasks) => set({ tasks }),
+
+  syncFromServer: (tasks) =>
+    set((state) => {
+      const pending = state.pendingRemovals;
+      if (pending.size === 0) return { tasks };
+      const filtered = { ...tasks };
+      for (const col of Object.keys(filtered) as ColumnId[]) {
+        filtered[col] = filtered[col].filter((t) => !pending.has(t.id));
+      }
+      return { tasks: filtered };
+    }),
+
+  markPendingRemoval: (taskId) =>
+    set((state) => ({
+      pendingRemovals: new Set(state.pendingRemovals).add(taskId),
+    })),
+
+  clearPendingRemoval: (taskId) =>
+    set((state) => {
+      if (!state.pendingRemovals.has(taskId)) return state;
+      const next = new Set(state.pendingRemovals);
+      next.delete(taskId);
+      return { pendingRemovals: next };
+    }),
 
   addTask: (columnId, task) =>
     set((state) => ({

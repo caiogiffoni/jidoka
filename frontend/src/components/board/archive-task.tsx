@@ -15,18 +15,21 @@ export function archiveTaskWithUndo(task: Task) {
   const index = state.tasks[column].findIndex((t) => t.id === task.id);
 
   state.removeTask(task.id);
+  state.markPendingRemoval(task.id);
 
   let finished = false;
   const commit = () => {
     if (finished) return;
     finished = true;
-    archiveTask(task.id).catch((error) => {
-      console.error("Could not archive task:", error);
-      useBoardStore.getState().restoreTask(task, column, index);
-      toast.error("Couldn't archive the task", {
-        description: "The card was put back. Try again.",
-      });
-    });
+    archiveTask(task.id)
+      .catch((error) => {
+        console.error("Could not archive task:", error);
+        useBoardStore.getState().restoreTask(task, column, index);
+        toast.error("Couldn't archive the task", {
+          description: "The card was put back. Try again.",
+        });
+      })
+      .finally(() => useBoardStore.getState().clearPendingRemoval(task.id));
   };
 
   toast("Task archived", {
@@ -35,6 +38,7 @@ export function archiveTaskWithUndo(task: Task) {
       label: "Undo",
       onClick: () => {
         finished = true;
+        useBoardStore.getState().clearPendingRemoval(task.id);
         useBoardStore.getState().restoreTask(task, column, index);
       },
     },
