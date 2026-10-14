@@ -10,6 +10,10 @@ import main
 from models import User
 from rate_limit import limiter
 
+# Keep the agent graph on the in-memory checkpointer during tests so the app
+# lifespan does not write LangGraph checkpoints to the dev database. The
+# Postgres checkpointer has its own test (test_agent_robustness.py).
+os.environ.setdefault("AGENT_CHECKPOINTER", "memory")
 os.environ.setdefault(
     "JWT_SECRET_KEY", "test-secret-for-pytest-must-be-at-least-32-bytes-long"
 )

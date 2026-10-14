@@ -141,36 +141,46 @@ class TestAgentGraphHitlFlow:
         after = len(session.exec(select(Task)).all())
         assert after == before
 
-    def test_graph_strips_blank_title_from_tool_args(self):
-        """If the LLM returns a blank title, the tool node must reject it and
-        the graph should surface an error rather than propose an invalid change.
-        """
-        graph = make_graph({"title": "   ", "column_id": "todo"})
-
-        with pytest.raises(Exception):
-            graph.invoke(
-                {"messages": [{"role": "user", "content": "Add a task"}]},
-                config={
-                    "configurable": {
-                        "thread_id": str(uuid.uuid4()),
-                        "user_id": str(uuid.uuid4()),
-                    }
-                },
+    @staticmethod
+    def _invoke_rejected_tool_call(args):
+        graph = build_graph(
+            model=QueueFakeModel(
+                responses=[_tool_call("create_task", args), _assistant("That failed.")]
             )
+        )
+        return graph.invoke(
+            {"messages": [{"role": "user", "content": "Add a task"}]},
+            config={
+                "configurable": {
+                    "thread_id": str(uuid.uuid4()),
+                    "user_id": str(uuid.uuid4()),
+                }
+            },
+        )
+
+    def test_graph_strips_blank_title_from_tool_args(self):
+        """If the LLM returns a blank title, the tool node must reject it: the
+        call is answered with an error ToolMessage, nothing is proposed, and the
+        agent gets another turn instead of the graph interrupting."""
+        result = self._invoke_rejected_tool_call({"title": "   ", "column_id": "todo"})
+
+        assert "__interrupt__" not in result
+        assert not result.get("proposed_changes")
+        tool_message = result["messages"][2]
+        assert tool_message.status == "error"
+        assert "title cannot be blank" in tool_message.content
+        assert result["messages"][-1].content == "That failed."
 
     def test_graph_rejects_invalid_column_from_tool_args(self):
-        graph = make_graph({"title": "Bad column", "column_id": "bogus"})
+        result = self._invoke_rejected_tool_call(
+            {"title": "Bad column", "column_id": "bogus"}
+        )
 
-        with pytest.raises(Exception):
-            graph.invoke(
-                {"messages": [{"role": "user", "content": "Add a task"}]},
-                config={
-                    "configurable": {
-                        "thread_id": str(uuid.uuid4()),
-                        "user_id": str(uuid.uuid4()),
-                    }
-                },
-            )
+        assert "__interrupt__" not in result
+        assert not result.get("proposed_changes")
+        tool_message = result["messages"][2]
+        assert tool_message.status == "error"
+        assert "invalid column_id" in tool_message.content
 
     def test_agent_node_passes_system_prompt_and_full_history(self):
         """The agent must invoke the LLM with a system prompt and the full

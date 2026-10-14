@@ -31,6 +31,16 @@ class AgentStreamRequest(BaseModel):
     resume: dict | None = None
 
 
+def scoped_thread_id(user_id: uuid.UUID | str, thread_id: str) -> str:
+    """Namespace the client-sent thread_id by user for the checkpointer.
+
+    The client picks the thread_id (e.g. one per board), so on its own it is
+    guessable; prefixing the authenticated user's id keeps user B from loading
+    or resuming user A's thread even if B sends the same thread_id.
+    """
+    return f"{user_id}:{thread_id}"
+
+
 def _format_sse(event: str, data: Any) -> str:
     """Serialize one SSE event block."""
     payload = json.dumps(data, default=str)
@@ -106,7 +116,7 @@ def stream_agent(
     """Stream agent events for a single turn (new message or resume)."""
     config = {
         "configurable": {
-            "thread_id": payload.thread_id,
+            "thread_id": scoped_thread_id(current_user.id, payload.thread_id),
             "user_id": str(current_user.id),
             "session": session,
         }
@@ -121,6 +131,12 @@ def stream_agent(
 
     def event_generator():
         try:
+            if payload.resume is not None and not graph.get_state(config).next:
+                # Nothing is waiting for approval on this (user-scoped) thread,
+                # e.g. a stale resume or another user's thread_id. Running the
+                # graph here would start a fresh, empty turn.
+                yield _format_sse("error", {"message": "no pending approval to resume"})
+                return
             for chunk in graph.stream(input_payload, config, stream_mode="updates"):
                 for event, data in _translate_chunk(chunk):
                     yield _format_sse(event, data)
