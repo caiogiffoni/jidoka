@@ -7,6 +7,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 import auth
+from agent.graph import close_checkpointer, init_checkpointer
 from agent.routes import router as agent_router
 from db import create_db_and_tables
 from rate_limit import limiter
@@ -18,7 +19,11 @@ async def lifespan(app: FastAPI):
     if not os.environ.get("JWT_SECRET_KEY"):
         raise RuntimeError("JWT_SECRET_KEY environment variable is not set")
     create_db_and_tables()
-    yield
+    init_checkpointer()
+    try:
+        yield
+    finally:
+        close_checkpointer()
 
 
 app = FastAPI(lifespan=lifespan)

@@ -52,10 +52,24 @@ def reindex(tasks: list[Task]) -> None:
         t.position = index
 
 
-def create_task_service(session: Session, user_id: uuid.UUID, payload: TaskCreate) -> Task:
+def _persist(session: Session, task: Task, commit: bool) -> Task:
+    """Commit (REST routes) or only flush (agent apply, which commits once for
+    the whole diff), then refresh so the returned task reflects the DB row."""
+    if commit:
+        session.commit()
+    else:
+        session.flush()
+    session.refresh(task)
+    return task
+
+
+def create_task_service(
+    session: Session, user_id: uuid.UUID, payload: TaskCreate, commit: bool = True
+) -> Task:
     """Create a task using the same logic as the manual POST /tasks endpoint.
 
     Extracted so the agent's apply node and the API share one code path.
+    Pass ``commit=False`` to flush only, leaving the commit to the caller.
     """
     if payload.project_id is not None:
         get_project_or_404(session, payload.project_id, user_id)
@@ -70,9 +84,7 @@ def create_task_service(session: Session, user_id: uuid.UUID, payload: TaskCreat
     ).one()
     task = Task(**payload.model_dump(), user_id=user_id, position=next_position)
     session.add(task)
-    session.commit()
-    session.refresh(task)
-    return task
+    return _persist(session, task, commit)
 
 
 def list_tasks_service(
@@ -119,6 +131,7 @@ def move_task_service(
     task_id: uuid.UUID,
     column_id: str,
     position: int | None = None,
+    commit: bool = True,
 ) -> Task:
     """Move a task to a column and/or position, matching PATCH /tasks/{id}/move."""
     if column_id not in {"backlog", "todo", "in_progress", "done"}:
@@ -144,9 +157,7 @@ def move_task_service(
     reindex(target)
     session.add_all(source)
     session.add_all(target)
-    session.commit()
-    session.refresh(task)
-    return task
+    return _persist(session, task, commit)
 
 
 def update_task_service(
@@ -154,10 +165,12 @@ def update_task_service(
     user_id: uuid.UUID,
     task_id: uuid.UUID,
     payload: TaskUpdate,
+    commit: bool = True,
 ) -> Task:
     """Update a task using the same logic as the manual PATCH /tasks/{id} endpoint.
 
     Extracted so the agent's apply node and the API share one code path.
+    Pass ``commit=False`` to flush only, leaving the commit to the caller.
     """
     task = get_task_or_404(session, task_id, user_id)
     if payload.project_id is not None:
@@ -168,9 +181,7 @@ def update_task_service(
     task.checklist = [item.model_dump() for item in payload.checklist]
     task.due_date = payload.due_date
     session.add(task)
-    session.commit()
-    session.refresh(task)
-    return task
+    return _persist(session, task, commit)
 
 
 __all__ = [

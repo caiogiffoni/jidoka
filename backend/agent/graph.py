@@ -14,6 +14,7 @@ import uuid
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.engine import make_url
 
 
 def _json_safe(obj: Any) -> Any:
@@ -45,6 +46,7 @@ from agent.tools import (
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 from models import Project, TaskCreate, TaskUpdate
@@ -202,8 +204,19 @@ def _resolve_project_name_to_id(
     return project.id if project else None
 
 
-def build_graph(model=None):
-    """Build and compile the HITL agent graph."""
+def _error_text(exc: Exception) -> str:
+    """Short, LLM-readable description of a tool failure."""
+    detail = getattr(exc, "detail", None)  # FastAPI HTTPException (e.g. 404)
+    text = str(detail if detail is not None else exc).strip()
+    return text or type(exc).__name__
+
+
+def build_graph(model=None, checkpointer=None):
+    """Build and compile the HITL agent graph.
+
+    ``checkpointer`` defaults to an in-memory saver, which is what tests use.
+    Production swaps in the Postgres checkpointer via ``init_checkpointer()``.
+    """
     # Model resolution is deferred to agent_node so importing this module does
     # not require OPENROUTER_API_KEY. Tests pass a fake model explicitly; production
     # resolves the module-level `model` global or falls back to ChatOpenAI.
@@ -228,36 +241,25 @@ def build_graph(model=None):
         session = _session_from_config(config)
         user_id = uuid.UUID(config["configurable"]["user_id"])
 
-        for tc in tool_calls:
-            name = tc.get("name")
-            args = tc.get("args", {})
-            tool_call_id = tc.get("id", "call_1")
-
+        def _run_tool(name, args, tool_call_id):
+            """Execute one tool call; return (proposed change or None, ToolMessage)."""
+            proposed = ToolMessage(content="proposed", tool_call_id=tool_call_id)
             if name == "create_task":
                 result = create_task_tool.invoke(args)
                 project_name = _project_name(session, result.get("project_id"))
-                changes.append(
-                    CreateTaskChange(**result, project_name=project_name)
-                )
-                tool_messages.append(
-                    ToolMessage(content="proposed", tool_call_id=tool_call_id)
-                )
+                return CreateTaskChange(**result, project_name=project_name), proposed
             elif name == "move_task":
                 parsed = move_task_tool.invoke(args)
                 task = get_task_service(session, parsed["task_id"], user_id)
-                changes.append(
-                    MoveTaskChange(
-                        task_id=task.id,
-                        title=task.title,
-                        from_column_id=task.column_id,
-                        to_column_id=parsed["column_id"],
-                        project_name=task.project.name if task.project else None,
-                        position=parsed.get("position"),
-                    )
+                change = MoveTaskChange(
+                    task_id=task.id,
+                    title=task.title,
+                    from_column_id=task.column_id,
+                    to_column_id=parsed["column_id"],
+                    project_name=task.project.name if task.project else None,
+                    position=parsed.get("position"),
                 )
-                tool_messages.append(
-                    ToolMessage(content="proposed", tool_call_id=tool_call_id)
-                )
+                return change, proposed
             elif name == "update_task":
                 parsed = update_task_tool.invoke(args)
                 task = get_task_service(session, parsed["task_id"], user_id)
@@ -265,20 +267,16 @@ def build_graph(model=None):
                 if project_id is None:
                     project_id = task.project_id
                 project_name = _project_name(session, project_id)
-                changes.append(
-                    UpdateTaskChange(
-                        task_id=task.id,
-                        title=parsed.get("title", task.title),
-                        description=parsed.get("description", task.description),
-                        project_id=project_id,
-                        project_name=project_name,
-                        checklist=parsed.get("checklist", task.checklist or []),
-                        due_date=parsed.get("due_date", task.due_date),
-                    )
+                change = UpdateTaskChange(
+                    task_id=task.id,
+                    title=parsed.get("title", task.title),
+                    description=parsed.get("description", task.description),
+                    project_id=project_id,
+                    project_name=project_name,
+                    checklist=parsed.get("checklist", task.checklist or []),
+                    due_date=parsed.get("due_date", task.due_date),
                 )
-                tool_messages.append(
-                    ToolMessage(content="proposed", tool_call_id=tool_call_id)
-                )
+                return change, proposed
             elif name == "list_tasks":
                 filters = list_tasks_tool.invoke(args)
                 project_id = filters.get("project_id")
@@ -295,33 +293,51 @@ def build_graph(model=None):
                     project_id=project_id,
                 )
                 result = {"tasks": [_task_to_dict(t) for t in tasks]}
-                tool_messages.append(
-                    ToolMessage(
-                        content=json.dumps(result, default=str),
-                        tool_call_id=tool_call_id,
-                    )
+                return None, ToolMessage(
+                    content=json.dumps(result, default=str),
+                    tool_call_id=tool_call_id,
                 )
             elif name == "list_projects":
                 projects = list_projects_service(session, user_id)
                 result = {"projects": [_project_to_dict(p) for p in projects]}
-                tool_messages.append(
-                    ToolMessage(
-                        content=json.dumps(result, default=str),
-                        tool_call_id=tool_call_id,
-                    )
+                return None, ToolMessage(
+                    content=json.dumps(result, default=str),
+                    tool_call_id=tool_call_id,
                 )
             elif name == "get_task":
                 parsed = get_task_tool.invoke(args)
                 task = get_task_service(session, parsed["task_id"], user_id)
                 result = {"task": _task_to_dict(task)}
-                tool_messages.append(
-                    ToolMessage(
-                        content=json.dumps(result, default=str),
-                        tool_call_id=tool_call_id,
-                    )
+                return None, ToolMessage(
+                    content=json.dumps(result, default=str),
+                    tool_call_id=tool_call_id,
                 )
             else:
                 raise ValueError(f"unsupported tool: {name}")
+
+        for tc in tool_calls:
+            name = tc.get("name")
+            args = tc.get("args", {})
+            tool_call_id = tc.get("id", "call_1")
+            # Every tool_call must get a matching ToolMessage, or the next LLM
+            # call on this thread is rejected with a 400. So a failing call
+            # (bad args, unknown task, unsupported tool) becomes an error
+            # ToolMessage the agent can react to instead of raising out of the
+            # node, and it never contributes a proposed change.
+            try:
+                change, message = _run_tool(name, args, tool_call_id)
+            except Exception as exc:  # noqa: BLE001 - surfaced to the LLM
+                tool_messages.append(
+                    ToolMessage(
+                        content=f"error: {_error_text(exc)}",
+                        tool_call_id=tool_call_id,
+                        status="error",
+                    )
+                )
+                continue
+            if change is not None:
+                changes.append(change)
+            tool_messages.append(message)
 
         return {"messages": tool_messages, "proposed_changes": changes}
 
@@ -348,47 +364,56 @@ def build_graph(model=None):
             created: list = []
             moved: list = []
             updated: list = []
-            for change in state.get("proposed_changes", []):
-                if isinstance(change, CreateTaskChange):
-                    task = create_task_service(
-                        session,
-                        user_id,
-                        TaskCreate(
-                            title=change.title,
-                            description=change.description,
-                            column_id=change.column_id,
-                            project_id=change.project_id,
-                            checklist=change.checklist,
-                        ),
-                    )
-                    # Serialize immediately while the SQLAlchemy object is still
-                    # fresh; a subsequent service commit can expire it.
-                    created.append(_json_safe(task.model_dump()))
-                elif isinstance(change, MoveTaskChange):
-                    task = move_task_service(
-                        session,
-                        user_id,
-                        change.task_id,
-                        change.to_column_id,
-                        change.position,
-                    )
-                    moved.append(_json_safe(task.model_dump()))
-                elif isinstance(change, UpdateTaskChange):
-                    task = update_task_service(
-                        session,
-                        user_id,
-                        change.task_id,
-                        TaskUpdate(
-                            title=change.title,
-                            description=change.description,
-                            project_id=change.project_id,
-                            checklist=change.checklist,
-                            due_date=change.due_date,
-                        ),
-                    )
-                    updated.append(_json_safe(task.model_dump()))
-                else:
-                    raise ValueError(f"unsupported change type: {type(change)}")
+            # All-or-nothing: every change runs inside one savepoint and the
+            # services only flush (commit=False), so a failure partway through
+            # rolls back the changes already made and a retry cannot duplicate
+            # them. The single commit happens after the whole diff succeeded.
+            with session.begin_nested():
+                for change in state.get("proposed_changes", []):
+                    if isinstance(change, CreateTaskChange):
+                        task = create_task_service(
+                            session,
+                            user_id,
+                            TaskCreate(
+                                title=change.title,
+                                description=change.description,
+                                column_id=change.column_id,
+                                project_id=change.project_id,
+                                checklist=change.checklist,
+                            ),
+                            commit=False,
+                        )
+                        # Serialize immediately while the SQLAlchemy object is
+                        # fresh; the final commit expires it.
+                        created.append(_json_safe(task.model_dump()))
+                    elif isinstance(change, MoveTaskChange):
+                        task = move_task_service(
+                            session,
+                            user_id,
+                            change.task_id,
+                            change.to_column_id,
+                            change.position,
+                            commit=False,
+                        )
+                        moved.append(_json_safe(task.model_dump()))
+                    elif isinstance(change, UpdateTaskChange):
+                        task = update_task_service(
+                            session,
+                            user_id,
+                            change.task_id,
+                            TaskUpdate(
+                                title=change.title,
+                                description=change.description,
+                                project_id=change.project_id,
+                                checklist=change.checklist,
+                                due_date=change.due_date,
+                            ),
+                            commit=False,
+                        )
+                        updated.append(_json_safe(task.model_dump()))
+                    else:
+                        raise ValueError(f"unsupported change type: {type(change)}")
+            session.commit()
             return {
                 "applied_results": created,
                 "applied_moved_results": moved,
@@ -432,11 +457,65 @@ def build_graph(model=None):
     builder.add_conditional_edges("propose", route_after_propose)
     builder.add_edge("apply", END)
 
-    from langgraph.checkpoint.memory import MemorySaver
-
-    return builder.compile(checkpointer=MemorySaver())
+    return builder.compile(
+        checkpointer=checkpointer if checkpointer is not None else MemorySaver()
+    )
 
 
 # Default graph instance used by the SSE endpoint. The model is resolved lazily
 # inside agent_node, so importing this module does not require OPENROUTER_API_KEY.
+# It starts on an in-memory checkpointer so importing needs no live DB either;
+# the FastAPI lifespan calls init_checkpointer() to move it onto Postgres.
 graph = build_graph(model=None)
+
+_checkpoint_pool = None
+
+
+def checkpointer_conninfo(database_url: str = db.DATABASE_URL) -> str:
+    """Convert the SQLAlchemy URL (postgresql+psycopg://...) to a psycopg conninfo."""
+    url = make_url(database_url).set(drivername="postgresql")
+    return url.render_as_string(hide_password=False)
+
+
+def init_checkpointer() -> None:
+    """Persist agent threads in Postgres (LangGraph PostgresSaver).
+
+    Opens a connection pool on DATABASE_URL, creates/migrates the checkpoint
+    tables once via ``setup()``, and points the shared ``graph`` at it so
+    interrupted HITL threads survive restarts and multiple workers. Setting
+    ``AGENT_CHECKPOINTER=memory`` keeps the in-memory saver (the test suite
+    does this so checkpoints are not left behind in the dev database).
+    """
+    global _checkpoint_pool
+    if os.environ.get("AGENT_CHECKPOINTER", "postgres").lower() == "memory":
+        return
+    if _checkpoint_pool is not None:
+        return
+
+    from langgraph.checkpoint.postgres import PostgresSaver
+    from psycopg.rows import dict_row
+    from psycopg_pool import ConnectionPool
+
+    pool = ConnectionPool(
+        checkpointer_conninfo(),
+        kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
+        open=True,
+    )
+    try:
+        saver = PostgresSaver(pool)
+        saver.setup()
+    except Exception:
+        pool.close()
+        raise
+    _checkpoint_pool = pool
+    graph.checkpointer = saver
+
+
+def close_checkpointer() -> None:
+    """Close the Postgres pool (if any) and fall back to the in-memory saver."""
+    global _checkpoint_pool
+    if _checkpoint_pool is None:
+        return
+    graph.checkpointer = MemorySaver()
+    _checkpoint_pool.close()
+    _checkpoint_pool = None
