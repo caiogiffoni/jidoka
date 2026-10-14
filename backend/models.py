@@ -5,7 +5,7 @@ from typing import Literal
 
 from blocked_usernames import PROFANE_USERNAMES
 from pydantic import EmailStr, field_serializer, model_validator
-from sqlalchemy import JSON, Column, UniqueConstraint
+from sqlalchemy import JSON, Column, DateTime, UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
 ColumnId = Literal["backlog", "todo", "in_progress", "done"]
@@ -104,6 +104,19 @@ class UserPublic(SQLModel):
 class AuthResponse(SQLModel):
     user: UserPublic
     token: str
+
+
+class OAuthExchangeCode(SQLModel, table=True):
+    """Single-use, short-lived code the OAuth callback hands the frontend in
+    place of the session JWT. Only a SHA-256 hash of the code is stored."""
+
+    __tablename__ = "oauth_exchange_codes"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    code_hash: str = Field(unique=True, index=True)
+    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE")
+    expires_at: datetime = Field(sa_type=DateTime(timezone=True))
+    consumed: bool = False
 
 
 class Project(SQLModel, table=True):

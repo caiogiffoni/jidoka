@@ -18,6 +18,7 @@ from rate_limit import limiter
 
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_TTL_DAYS = 7
+ACCESS_TOKEN_TYP = "access"
 
 # Lazily resolve the secret so importing this module doesn't crash tests that
 # haven't set the environment variable yet. Step 4 will enforce the secret on
@@ -49,6 +50,7 @@ def _create_token(user: User) -> str:
         "sub": str(user.id),
         "email": user.email,
         "username": user.username,
+        "typ": ACCESS_TOKEN_TYP,
         "iat": now,
         "exp": now + timedelta(days=ACCESS_TOKEN_TTL_DAYS),
     }
@@ -56,12 +58,18 @@ def _create_token(user: User) -> str:
 
 
 def _decode_token(token: str) -> dict:
-    return jwt.decode(
+    payload = jwt.decode(
         token,
         _jwt_secret(),
         algorithms=[JWT_ALGORITHM],
         options={"require": ["exp"]},
     )
+    # Reject other token kinds signed with the same key (e.g. OAuth state).
+    # Tokens issued before `typ` existed have no claim and stay valid.
+    typ = payload.get("typ")
+    if typ is not None and typ != ACCESS_TOKEN_TYP:
+        raise jwt.InvalidTokenError("not an access token")
+    return payload
 
 
 def _to_public(user: User) -> UserPublic:
@@ -180,25 +188,54 @@ def oauth_initiate(provider: str):
             detail="unknown oauth provider",
         )
     try:
-        url = oauth_module.build_authorize_url(provider)  # type: ignore[arg-type]
+        url, nonce = oauth_module.build_authorize_url(provider)  # type: ignore[arg-type]
     except RuntimeError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
         ) from exc
-    return RedirectResponse(url)
+    response = RedirectResponse(url)
+    # Binds the state to this browser: the callback requires this cookie and
+    # checks it against the state's nonce hash.
+    response.set_cookie(
+        oauth_module.STATE_COOKIE,
+        nonce,
+        max_age=oauth_module.STATE_TTL_MINUTES * 60,
+        path=oauth_module.STATE_COOKIE_PATH,
+        httponly=True,
+        secure=oauth_module.state_cookie_secure(),
+        samesite="lax",
+    )
+    return response
 
 
-def _oauth_error_redirect(message: str) -> RedirectResponse:
+def _frontend_callback_redirect(query: str) -> RedirectResponse:
     frontend = oauth_module._frontend_url()
-    return RedirectResponse(
-        f"{frontend}/oauth/callback?error={message}",
+    response = RedirectResponse(
+        f"{frontend}/oauth/callback?{query}",
         status_code=status.HTTP_303_SEE_OTHER,
     )
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    # The state cookie is single-use: clear it whatever the outcome.
+    response.delete_cookie(
+        oauth_module.STATE_COOKIE,
+        path=oauth_module.STATE_COOKIE_PATH,
+        httponly=True,
+        secure=oauth_module.state_cookie_secure(),
+        samesite="lax",
+    )
+    return response
+
+
+def _oauth_error_redirect(code: str) -> RedirectResponse:
+    # `code` is always one of a fixed set of identifiers, never free text.
+    return _frontend_callback_redirect(f"error={code}")
 
 
 @router.get("/oauth/{provider}/callback")
 async def oauth_callback(
+    request: Request,
     provider: str,
     code: str | None = None,
     state: str | None = None,
@@ -208,22 +245,37 @@ async def oauth_callback(
         return _oauth_error_redirect("unknown_provider")
     if not code or not state:
         return _oauth_error_redirect("missing_oauth_parameters")
-    if not oauth_module._verify_state(state, provider):  # type: ignore[arg-type]
+    cookie_nonce = request.cookies.get(oauth_module.STATE_COOKIE)
+    if not oauth_module._verify_state(state, provider, cookie_nonce):  # type: ignore[arg-type]
         return _oauth_error_redirect("invalid_state")
 
     try:
         info = await oauth_module.fetch_userinfo(provider, code)  # type: ignore[arg-type]
-    except RuntimeError as exc:
-        return _oauth_error_redirect(str(exc).replace(" ", "_"))
-    except httpx.HTTPError as exc:
+    except (RuntimeError, httpx.HTTPError):
         return _oauth_error_redirect("provider_request_failed")
 
-    user = oauth_module.get_or_create_oauth_user(
-        session, provider, info  # type: ignore[arg-type]
-    )
-    token = _create_token(user)
-    frontend = oauth_module._frontend_url()
-    return RedirectResponse(
-        f"{frontend}/oauth/callback?token={token}",
-        status_code=status.HTTP_303_SEE_OTHER,
-    )
+    try:
+        user = oauth_module.get_or_create_oauth_user(
+            session, provider, info  # type: ignore[arg-type]
+        )
+    except oauth_module.OAuthError as exc:
+        return _oauth_error_redirect(exc.code)
+
+    # Hand the browser a short-lived single-use code, never the JWT itself:
+    # URLs end up in history, logs, Referer headers and analytics.
+    exchange_code = oauth_module.issue_exchange_code(session, user)
+    return _frontend_callback_redirect(f"code={exchange_code}")
+
+
+@router.post("/oauth/exchange", response_model=AuthResponse)
+def oauth_exchange(
+    payload: oauth_module.OAuthExchangeRequest,
+    session: Session = Depends(get_session),
+):
+    user = oauth_module.redeem_exchange_code(session, payload.code)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="invalid or expired code",
+        )
+    return _auth_response(user)

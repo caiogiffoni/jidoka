@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import os
 import re
 import secrets
@@ -7,13 +9,38 @@ from typing import Literal
 
 import httpx
 import jwt
-from sqlmodel import Session, select
+from sqlalchemy import delete, func, or_, update
+from sqlmodel import Session, SQLModel, select
 
 import auth
-from models import User
+from models import OAuthExchangeCode, User
 
 OAuthProvider = Literal["google", "github"]
 STATE_TTL_MINUTES = 5
+STATE_TYP = "oauth_state"
+# The state nonce lives in this cookie so a state value is only valid in the
+# browser that started the flow (login-CSRF protection). Scoped to the OAuth
+# routes so it is never sent anywhere else.
+STATE_COOKIE = "jidoka_oauth_state"
+STATE_COOKIE_PATH = "/auth/oauth"
+# One-time code handed to the frontend instead of the session JWT.
+EXCHANGE_CODE_TTL_SECONDS = 60
+
+
+class OAuthExchangeRequest(SQLModel):
+    code: str
+
+
+class OAuthError(Exception):
+    """An OAuth failure with a fixed, user-facing error code.
+
+    The code is the only thing that reaches the browser (as ``?error=``), so
+    it must always be one of a known set - never free text.
+    """
+
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
 
 
 @dataclass(frozen=True)
@@ -63,18 +90,38 @@ def _redirect_uri(provider: OAuthProvider) -> str:
     return f"{_backend_url()}/auth/oauth/{provider}/callback"
 
 
-def _sign_state(provider: OAuthProvider) -> str:
+def state_cookie_secure() -> bool:
+    """Mark the state cookie Secure whenever the backend is served over HTTPS."""
+    return _backend_url().startswith("https://")
+
+
+def _hash(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _sign_state(provider: OAuthProvider) -> tuple[str, str]:
+    """Return ``(state, nonce)``.
+
+    The nonce goes into the browser's httpOnly state cookie; the state only
+    carries its hash, so a state leaked via the provider URL or logs can't be
+    turned into a matching cookie.
+    """
     now = datetime.now(timezone.utc)
+    nonce = secrets.token_urlsafe(32)
     payload = {
+        "typ": STATE_TYP,
         "provider": provider,
-        "nonce": secrets.token_urlsafe(16),
+        "nonce_hash": _hash(nonce),
         "iat": now,
         "exp": now + timedelta(minutes=STATE_TTL_MINUTES),
     }
-    return jwt.encode(payload, auth._jwt_secret(), algorithm=auth.JWT_ALGORITHM)
+    state = jwt.encode(payload, auth._jwt_secret(), algorithm=auth.JWT_ALGORITHM)
+    return state, nonce
 
 
-def _verify_state(state: str, provider: OAuthProvider) -> bool:
+def _verify_state(state: str, provider: OAuthProvider, cookie_nonce: str | None) -> bool:
+    if not cookie_nonce:
+        return False
     try:
         payload = jwt.decode(
             state,
@@ -84,23 +131,31 @@ def _verify_state(state: str, provider: OAuthProvider) -> bool:
         )
     except jwt.PyJWTError:
         return False
-    return payload.get("provider") == provider
+    if payload.get("typ") != STATE_TYP or payload.get("provider") != provider:
+        return False
+    expected = payload.get("nonce_hash")
+    if not isinstance(expected, str):
+        return False
+    return hmac.compare_digest(expected, _hash(cookie_nonce))
 
 
-def build_authorize_url(provider: OAuthProvider) -> str:
+def build_authorize_url(provider: OAuthProvider) -> tuple[str, str]:
+    """Return ``(authorize_url, nonce)``; the caller stores the nonce in the
+    state cookie."""
     client_id, _ = _client_credentials(provider)
     config = _PROVIDERS[provider]
+    state, nonce = _sign_state(provider)
     params = {
         "client_id": client_id,
         "redirect_uri": _redirect_uri(provider),
         "response_type": "code",
         "scope": config["scope"],
-        "state": _sign_state(provider),
+        "state": state,
         "access_type": "online",
     }
     # httpx handles URL encoding; keeping the call synchronous because it only
     # builds a URL, no I/O.
-    return str(httpx.URL(config["authorize_url"], params=params))
+    return str(httpx.URL(config["authorize_url"], params=params)), nonce
 
 
 async def _exchange_code(provider: OAuthProvider, code: str) -> str:
@@ -234,29 +289,32 @@ def get_or_create_oauth_user(
     if existing is not None:
         return existing
 
-    # Link to an existing password user only when the email is verified.
+    email = info.email.strip().lower()
+
+    # Never auto-link to an existing account by email. Password signup does
+    # not verify email ownership, so linking would hand the real owner's
+    # provider login to whoever pre-registered that address. Accounts created
+    # by another provider are refused too: we don't record whether that
+    # provider verified the email, and the User row holds only one identity,
+    # so linking would also silently drop the original login method.
     existing_by_email = session.exec(
-        select(User).where(User.email == info.email)
+        select(User).where(func.lower(User.email) == email)
     ).first()
     if existing_by_email is not None:
-        if not info.email_verified:
-            raise RuntimeError(
-                "an account with this email already exists; "
-                "verify the email with the provider to link it"
-            )
-        existing_by_email.oauth_provider = provider
-        existing_by_email.oauth_provider_id = info.provider_id
-        session.add(existing_by_email)
-        session.commit()
-        session.refresh(existing_by_email)
-        return existing_by_email
+        if existing_by_email.hashed_password is not None:
+            raise OAuthError("account_exists_password")
+        raise OAuthError("account_exists_oauth")
+
+    # Only provider-verified emails may claim an address for a new account.
+    if not info.email_verified:
+        raise OAuthError("email_unverified")
 
     username_base = info.username_base
     if _normalize_username(username_base) == "user":
-        username_base = info.email.split("@")[0]
+        username_base = email.split("@")[0]
 
     user = User(
-        email=info.email,
+        email=email,
         username=_resolve_username(session, username_base),
         oauth_provider=provider,
         oauth_provider_id=info.provider_id,
@@ -265,3 +323,53 @@ def get_or_create_oauth_user(
     session.commit()
     session.refresh(user)
     return user
+
+
+def issue_exchange_code(session: Session, user: User) -> str:
+    """Create a short-lived, single-use code the frontend trades for a JWT.
+
+    Only the code's hash is stored. Expired and consumed rows are cleaned up
+    opportunistically here so the table never grows unbounded.
+    """
+    now = datetime.now(timezone.utc)
+    session.execute(
+        delete(OAuthExchangeCode).where(
+            or_(
+                OAuthExchangeCode.expires_at < now,
+                OAuthExchangeCode.consumed.is_(True),
+            )
+        )
+    )
+    code = secrets.token_urlsafe(32)
+    session.add(
+        OAuthExchangeCode(
+            code_hash=_hash(code),
+            user_id=user.id,
+            expires_at=now + timedelta(seconds=EXCHANGE_CODE_TTL_SECONDS),
+        )
+    )
+    session.commit()
+    return code
+
+
+def redeem_exchange_code(session: Session, code: str) -> User | None:
+    """Consume a code atomically; returns None if unknown, used, or expired."""
+    if not code:
+        return None
+    now = datetime.now(timezone.utc)
+    # A single conditional UPDATE makes redemption race-safe: two concurrent
+    # requests with the same code can't both flip consumed from false.
+    user_id = session.execute(
+        update(OAuthExchangeCode)
+        .where(
+            OAuthExchangeCode.code_hash == _hash(code),
+            OAuthExchangeCode.consumed.is_(False),
+            OAuthExchangeCode.expires_at > now,
+        )
+        .values(consumed=True)
+        .returning(OAuthExchangeCode.user_id)
+    ).scalar_one_or_none()
+    session.commit()
+    if user_id is None:
+        return None
+    return session.get(User, user_id)

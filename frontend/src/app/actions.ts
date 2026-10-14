@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { AUTH_COOKIE } from "@/lib/auth";
+import type { OAuthErrorCode } from "@/lib/oauth-errors";
 import {
   authHeaders,
   BACKEND_URL,
@@ -440,14 +441,31 @@ export async function register(
   redirect("/board");
 }
 
-export async function setAuthToken(
-  token: string,
-): Promise<AuthActionState> {
-  if (!token) {
-    return { type: "error", message: "Missing token." };
+/**
+ * Trade the one-time code from the OAuth callback for a session JWT,
+ * server-to-server, and store it in the httpOnly session cookie. The code is
+ * single-use and expires within a minute on the backend; it is never logged.
+ */
+export async function exchangeOAuthCode(
+  code: string,
+): Promise<{ ok: true } | { ok: false; error: OAuthErrorCode }> {
+  if (!code) return { ok: false, error: "exchange_failed" };
+  let token: string | undefined;
+  try {
+    const res = await fetch(`${BACKEND_URL}/auth/oauth/exchange`, {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    if (!res.ok) return { ok: false, error: "exchange_failed" };
+    ({ token } = (await res.json()) as { token?: string });
+  } catch {
+    return { ok: false, error: "oauth_failed" };
   }
+  if (!token) return { ok: false, error: "exchange_failed" };
   await setAuthCookie(token);
-  return { type: "success", message: "Signed in." };
+  return { ok: true };
 }
 
 export async function logout(): Promise<void> {
